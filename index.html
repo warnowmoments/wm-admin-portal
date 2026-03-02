@@ -1039,6 +1039,12 @@ var BOOKING = {
   EXPIRE_RESERVED_BY_OFFER_VALID_UNTIL: true,
   REQUIRE_OFFER_VALID_UNTIL_FOR_RESERVATION: true
 };
+// KOMPATIBILITÄTS-ALIASE
+BOOKING.STORAGE_KEY = BOOKING.STORAGEKEY;
+BOOKING.RESOURCE_ID = BOOKING.RESOURCE_ID;
+BOOKING.EXPIRE_RESERVED_BY_OFFER_VALID_UNTIL = BOOKING.EXPIRERESERVEDBYOFFERVALIDUNTIL;
+BOOKING.REQUIRE_OFFER_VALID_UNTIL_FOR_RESERVATION = BOOKING.REQUIREOFFERVALIDUNTILFORRESERVATION;
+
 
 var DEPOSIT_RATE = 1 / 3;
 var OFFER_DEFAULT_START_TIME = "10:00";
@@ -1072,10 +1078,7 @@ function renderCalendarSafe() {
   try { if (typeof WMK_CAL !== "undefined" && typeof WMK_CAL.render === "function") WMK_CAL.render(); } catch(e) {}
 }
 
-function bookingRefreshUI() {
-  renderCalendarSafe();
-    console.log('Buchungen UI refreshed');
-}
+
 
 // ===== START BEI LOAD =====
 
@@ -1143,196 +1146,266 @@ var OFFER_DEFAULT_START_TIME = "10:00";
 var OFFER_DEFAULT_END_TIME   = "18:00";
 var abDepositAuto = true;
 
-/** =========================
- *  BUCHUNGEN (localStorage)
- *  ========================= */
-function bookingUid() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
-}
+  // ==========================================
+  // CLOUD-FIRST BUCHUNGSSYSTEM (SUPABASE)
+  // ==========================================
 
-async function bookingSaveAll(arr) {
-  localStorage.setItem(BOOKING.STORAGE_KEY, JSON.stringify(arr));
-  if (typeof sb !== 'undefined' && sb) {
-      try {
-          const bookings = arr.map(b => ({
-            id: String(b.id),
-            created_at: new Date(b.createdAt || Date.now()).toISOString(),
-            customer: String(b.customer || ''),
-            ref: String(b.ref || ''),
-            start_time: b.startMs ? new Date(b.startMs).toISOString() : null,
-            end_time: b.endMs ? new Date(b.endMs).toISOString() : null,
-            status: String(b.status || 'reserved'),
-            note: String(b.note || '')
-          }));
-          const { error } = await sb.from('wm_bookings').upsert(bookings);
-          if (error) { 
-            console.error('Supabase save error wm_bookings:', error); 
-            alert("Fehler beim Speichern in wm_bookings: " + error.message);
-          } else { 
-            console.log('Saved to wm_bookings:', bookings.length); 
-            await savePublicCalendarToSupabase();
-          }
-      } catch (e) { 
-        console.error('Supabase write error:', e); 
-        alert("Unerwarteter Supabase Fehler bei wm_bookings.");
-      }
+  // Globale Variable für unsere Buchungen im RAM (nicht mehr localStorage!)
+  let currentBookings = [];
+
+  function bookingUid() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
   }
-}
 
-
-async function savePublicCalendarToSupabase() {
-  if (typeof sb === 'undefined' || !sb) return;
-  const all = bookingLoadAll();
-
-  // Wir filtern nur die blockierenden Termine
-  const activeEvents = all
-    .filter(b => b && b.resourceId === BOOKING.RESOURCE_ID)
-    .filter(b => b.status === "confirmed" || b.status === "reserved");
-
-  const payloadArray = activeEvents.map(b => {
-      const isConf = b.status === "confirmed";
-      return {
-          id: b.id, // Nutzen die Booking-ID auch als Primary Key für den Kalender
-          booking_id: b.id,
-          start_time: b.startMs ? new Date(b.startMs).toISOString() : null,
-          end_time: b.endMs ? new Date(b.endMs).toISOString() : null,
-          status: b.status,
-          title: isConf ? "Gebucht" : "Reserviert"
-      };
-  });
-
-  try {
-      // 1. Zuerst alle alten Einträge für dieses Floß löschen (so verschwinden auch stornierte Termine sauber)
-      // Alternativ können wir auch upsert nutzen, aber dann bleiben stornierte als Geister im Kalender.
-      // Da wir aber ggf. keine kompletten Deletes machen wollen, überschreiben wir einfach alle mit Upsert 
-      // und für die gecancelten updaten wir den Status auf "cancelled", damit die Website sie ignorieren kann.
-
-      const allEventsToSync = all.filter(b => b && b.resourceId === BOOKING.RESOURCE_ID).map(b => {
-          const isConf = b.status === "confirmed";
-          let title = "Reserviert";
-          if (b.status === "confirmed") title = "Gebucht";
-          if (b.status === "cancelled") title = "Storniert";
-
-          return {
-              id: b.id, 
-              booking_id: b.id,
-              start_time: b.startMs ? new Date(b.startMs).toISOString() : null,
-              end_time: b.endMs ? new Date(b.endMs).toISOString() : null,
-              status: b.status,
-              title: title
-          };
-      });
-
-      if (allEventsToSync.length > 0) {
-          const { error } = await sb.from('wm_public_calendar').upsert(allEventsToSync);
-          if (error) {
-              console.error("Fehler beim Speichern des öffentlichen Kalenders:", error);
-              alert("Fehler in wm_public_calendar: " + error.message);
-          } else {
-              console.log("wm_public_calendar synchronisiert.");
-          }
+  // LÄDT ALLE BUCHUNGEN LIVE AUS SUPABASE (überschreibt lokale Liste)
+  async function loadBookingsFromCloud() {
+    if (typeof sb === 'undefined' || !sb) return [];
+    
+    try {
+      const { data, error } = await sb.from('wm_bookings').select('*');
+      if (error) {
+        console.error("Fehler beim Laden aus Supabase:", error);
+        return currentBookings; // Fallback auf bestehende
       }
-  } catch(e) {
-      console.error("Exception wm_public_calendar:", e);
+
+      // Supabase-Format in unser App-Format umwandeln
+      currentBookings = data.map(dbItem => ({
+        id: dbItem.id,
+        resourceId: BOOKING.RESOURCE_ID,
+        status: dbItem.status,
+        customer: dbItem.customer || '',
+        ref: dbItem.ref || '',
+        note: dbItem.note || '',
+        startMs: dbItem.start_time ? new Date(dbItem.start_time).getTime() : null,
+        endMs: dbItem.end_time ? new Date(dbItem.end_time).getTime() : null,
+        createdAt: dbItem.created_at ? new Date(dbItem.created_at).getTime() : Date.now(),
+        updatedAt: Date.now()
+      }));
+
+      // Veraltete Reservierungen prüfen (wie im alten System)
+      const res = bookingExpireReservationsOnArray(currentBookings);
+      if (res.changed) {
+        // Wenn etwas abgelaufen ist, direkt in der Cloud aktualisieren
+        currentBookings = res.arr;
+        await syncCloudWithLocalArray(currentBookings);
+      }
+
+      return currentBookings;
+    } catch (e) {
+      console.error("Netzwerkfehler beim Laden:", e);
+      return currentBookings;
+    }
   }
-}
 
+  // ALTE FUNKTION für Kompatibilität - ruft jetzt die Live-Daten ab
+  function bookingLoadAll() {
+    return currentBookings;
+  }
 
-
-function bookingExpireReservationsOnArray(arr) {
-  if (!BOOKING.EXPIRE_RESERVED_BY_OFFER_VALID_UNTIL) return { arr, changed: false };
-
-  const now = Date.now();
-  let changed = false;
-
-  const out = arr.map(b => {
-    if (!b) return b;
-    if (b.resourceId !== BOOKING.RESOURCE_ID) return b;
-
-    if (b.status === "reserved") {
+  // PRÜFT AUF ABGELAUFENE ANGEBOTE
+  function bookingExpireReservationsOnArray(arr) {
+    if (!BOOKING.EXPIRERESERVEDBYOFFERVALIDUNTIL) return { arr, changed: false };
+    const now = Date.now();
+    let changed = false;
+    const out = arr.map(b => {
+      if (!b || b.resourceId !== BOOKING.RESOURCE_ID || b.status !== 'reserved') return b;
       const validUntilMs = Number(b.validUntilMs);
       if (isFinite(validUntilMs) && validUntilMs > 0 && now > validUntilMs) {
         changed = true;
-        const note = String(b.note || "");
-        const suffix = note.includes("Automatisch abgelaufen")
-          ? note
-          : (note ? (note + "\n") : "") + "Automatisch abgelaufen: Angebotsfrist überschritten.";
-        return { ...b, status: "cancelled", note: suffix, updatedAt: Date.now() };
-      }
-    }
-    return b;
-  });
-
-  return { arr: out, changed };
-}
-
-function bookingLoadAll() {
-  try {
-    const raw = localStorage.getItem(BOOKING.STORAGE_KEY) || "[]";
-    const arr = JSON.parse(raw);
-    let safe = Array.isArray(arr) ? arr : [];
-
-    // MIGRATION: Convert any non-UUID ids to proper UUIDs so Supabase doesn't crash forever
-    let migrated = false;
-    safe = safe.map(b => {
-      if (b && b.id && !b.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)) {
-        migrated = true;
-        b.id = bookingUid(); 
+        const note = String(b.note);
+        const suffix = note.includes('Automatisch abgelaufen') ? '' : '\nAutomatisch abgelaufen (Angebotsfrist überschritten).';
+        return { ...b, status: 'cancelled', note: (note + suffix).trim(), updatedAt: Date.now() };
       }
       return b;
     });
-
-    const res = bookingExpireReservationsOnArray(safe);
-    if (res.changed || migrated) bookingSaveAll(res.arr);
-    return res.arr;
-  } catch {
-    return [];
+    return { arr: out, changed };
   }
-}
 
-function bookingIsBlockingStatus(status) {
-  return status === "confirmed" || status === "reserved";
-}
-function rangesOverlap(aStart, aEnd, bStart, bEnd) {
-  return aStart < bEnd && bStart < aEnd;
-}
-function bookingConflicts(startMs, endMs, ignoreId = null) {
-  const all = bookingLoadAll();
-  return all.filter(b => {
-    if (!b) return false;
-    if (ignoreId && b.id === ignoreId) return false;
-    if (b.resourceId !== BOOKING.RESOURCE_ID) return false;
-    if (!bookingIsBlockingStatus(b.status)) return false;
-    return rangesOverlap(startMs, endMs, Number(b.startMs), Number(b.endMs));
-  });
-}
-function bookingUpsert(obj) {
-  const all = bookingLoadAll();
-  const idx = all.findIndex(x => x.id === obj.id);
-  if (idx >= 0) all[idx] = { ...all[idx], ...obj, updatedAt: Date.now() };
-  else all.push({ ...obj, createdAt: Date.now(), updatedAt: Date.now() });
-  bookingSaveAll(all);
-}
-function bookingSetStatus(id, status, refOptional = "") {
-  const all = bookingLoadAll();
-  const idx = all.findIndex(x => x.id === id);
-  if (idx < 0) return false;
-  all[idx].status = status;
-  if (refOptional) all[idx].ref = refOptional;
-  all[idx].updatedAt = Date.now();
-  bookingSaveAll(all);
-  return true;
-}
-function bookingDelete(id) {
-  bookingSaveAll(bookingLoadAll().filter(b => b.id !== id));
-}
-function bookingFindById(id) {
-  if (!id) return null;
-  return bookingLoadAll().find(b => b.id === id) || null;
-}
+  function bookingIsBlockingStatus(status) {
+    return status === 'confirmed' || status === 'reserved';
+  }
+
+  function rangesOverlap(aStart, aEnd, bStart, bEnd) {
+    return aStart < bEnd && bStart < aEnd;
+  }
+
+  function bookingConflicts(startMs, endMs, ignoreId = null) {
+    const all = bookingLoadAll();
+    return all.filter(b => {
+      if (!b) return false;
+      if (ignoreId && b.id === ignoreId) return false;
+      if (b.resourceId !== BOOKING.RESOURCE_ID) return false;
+      if (!bookingIsBlockingStatus(b.status)) return false;
+      return rangesOverlap(startMs, endMs, Number(b.startMs), Number(b.endMs));
+    });
+  }
+
+  // SENDET EINE EINZELNE BUCHUNG/UPDATE AN SUPABASE (Upsert)
+  async function bookingUpsert(obj) {
+    // 1. In der lokalen Anzeige sofort aktualisieren (fürs Feeling)
+    const idx = currentBookings.findIndex(x => x.id === obj.id);
+    if (idx >= 0) {
+      currentBookings[idx] = { ...currentBookings[idx], ...obj, updatedAt: Date.now() };
+    } else {
+      currentBookings.push({ ...obj, createdAt: Date.now(), updatedAt: Date.now() });
+    }
+
+    // 2. An die Cloud senden
+    if (typeof sb !== 'undefined' && sb) {
+      try {
+        const dbObj = {
+          id: obj.id,
+          customer: obj.customer || '',
+          ref: obj.ref || '',
+          start_time: obj.startMs ? new Date(obj.startMs).toISOString() : null,
+          end_time: obj.endMs ? new Date(obj.endMs).toISOString() : null,
+          status: obj.status || 'reserved',
+          note: obj.note || '',
+          created_at: obj.createdAt ? new Date(obj.createdAt).toISOString() : new Date().toISOString()
+        };
+        
+        const { error } = await sb.from('wm_bookings').upsert(dbObj);
+        if (error) console.error("Fehler beim Speichern in der Cloud:", error);
+        
+        // Nach dem Speichern sofort den öffentlichen Kalender aktualisieren
+        await savePublicCalendarToSupabase();
+      } catch (e) {
+        console.error("Exception bei Upsert:", e);
+      }
+    }
+  }
+
+  // STATUS ÄNDERN (Stornieren, Bestätigen)
+  async function bookingSetStatus(id, status, refOptional = null) {
+    const idx = currentBookings.findIndex(x => x.id === id);
+    if (idx < 0) return false;
+    
+    currentBookings[idx].status = status;
+    if (refOptional) currentBookings[idx].ref = refOptional;
+    currentBookings[idx].updatedAt = Date.now();
+    
+    // In der Cloud aktualisieren
+    await bookingUpsert(currentBookings[idx]);
+    return true;
+  }
+
+  // BUCHUNG LÖSCHEN
+  async function bookingDelete(id) {
+    currentBookings = currentBookings.filter(b => b.id !== id);
+    
+    if (typeof sb !== 'undefined' && sb) {
+      try {
+        await sb.from('wm_bookings').delete().eq('id', id);
+        await savePublicCalendarToSupabase();
+      } catch (e) {
+        console.error("Fehler beim Löschen in der Cloud:", e);
+      }
+    }
+  }
+
+  function bookingFindById(id) {
+    if (!id) return null;
+    return currentBookings.find(b => b.id === id) || null;
+  }
+
+  // MASSEN-UPDATE (nur noch selten gebraucht, z.B. bei Auto-Expire)
+  async function syncCloudWithLocalArray(arr) {
+    if (typeof sb === 'undefined' || !sb) return;
+    try {
+      const bookings = arr.map(b => ({
+        id: String(b.id),
+        created_at: new Date(b.createdAt || Date.now()).toISOString(),
+        customer: String(b.customer || ''),
+        ref: String(b.ref || ''),
+        start_time: b.startMs ? new Date(b.startMs).toISOString() : null,
+        end_time: b.endMs ? new Date(b.endMs).toISOString() : null,
+        status: String(b.status || 'reserved'),
+        note: String(b.note || '')
+      }));
+      await sb.from('wm_bookings').upsert(bookings);
+      await savePublicCalendarToSupabase();
+    } catch(e) {
+      console.error(e);
+    }
+  }
+
+  // ÖFFENTLICHEN KALENDER AKTUALISIEREN
+  async function savePublicCalendarToSupabase() {
+    if (typeof sb === 'undefined' || !sb) return;
+    
+    // Wir nehmen die aktuellsten Daten
+    const all = currentBookings;
+    
+    const allEventsToSync = all.filter(b => b.resourceId === BOOKING.RESOURCE_ID).map(b => {
+      const isConf = (b.status === 'confirmed');
+      let title = 'Reserviert';
+      if (b.status === 'confirmed') title = 'Gebucht';
+      if (b.status === 'cancelled') title = 'Storniert';
+      
+      return {
+        id: b.id,
+        booking_id: b.id,
+        start_time: b.startMs ? new Date(b.startMs).toISOString() : null,
+        end_time: b.endMs ? new Date(b.endMs).toISOString() : null,
+        status: b.status,
+        title: title
+      };
+    });
+    
+    if (allEventsToSync.length > 0) {
+      try {
+        await sb.from('wm_public_calendar').upsert(allEventsToSync);
+      } catch(e) { console.error("Fehler beim Public Sync", e); }
+    }
+  }
+
+  // ERSETZT DIE ALTE REFRESH FUNKTION - Lädt ERST aus der Cloud, DANN baut sie das UI
+  async function bookingRefreshUI() {
+    console.log("Lade frische Daten aus der Cloud...");
+    await loadBookingsFromCloud();
+    console.log("Buchungen UI refreshed");
+    
+    const tbody = document.getElementById('booking-list');
+    if (!tbody) return;
+    
+    const all = currentBookings
+      .filter(b => b.resourceId === BOOKING.RESOURCE_ID)
+      .slice()
+      .sort((a,b) => Number(a.startMs) - Number(b.startMs));
+      
+    if (!all.length) {
+      tbody.innerHTML = `<tr><td colspan="6" class="hint">Keine Buchungen gefunden.</td></tr>`;
+    } else {
+      tbody.innerHTML = all.map(b => {
+        const tagCls = b.status === 'confirmed' ? 't-conf' : (b.status === 'reserved' ? 't-res' : 't-canc');
+        const label = b.status === 'confirmed' ? 'bestätigt' : (b.status === 'reserved' ? 'reserviert' : 'storniert');
+        const validIso = b.offerValidUntilIso ? `<br><span class="mono">${escapeHtml(b.offerValidUntilIso)}</span>` : '';
+        return `
+          <tr>
+            <td><span class="tag ${tagCls}">${label}</span></td>
+            <td><span class="mono">${fmtDT(b.startMs)}</span><br>${fmtDT(b.endMs)}</td>
+            <td>${escapeHtml(b.customer)}</td>
+            <td>${escapeHtml(b.ref)} ${validIso}</td>
+            <td class="mono">${escapeHtml(b.id)}</td>
+            <td>
+              <button class="btn btn-muted" type="button" onclick="bookingEditAction('${escapeHtml(b.id)}')">Bearbeiten</button>
+              <button class="btn btn-secondary" type="button" onclick="bookingSetStatusAction('${escapeHtml(b.id)}', 'confirmed', null)">Bestätigen</button>
+              <button class="btn btn-danger" type="button" onclick="bookingSetStatusAction('${escapeHtml(b.id)}', 'cancelled', null)">Stornieren</button>
+              <button class="btn btn-danger" type="button" onclick="bookingDeleteAction('${escapeHtml(b.id)}')">Löschen</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+    
+    // Nach dem Laden auch den Kalender neu zeichnen
+    try {
+      if(typeof WMKCAL !== 'undefined' && typeof WMKCAL.render === 'function') WMKCAL.render();
+    } catch(e) {}
+  }
 
 /** =========================
  *  DATE HELPERS
@@ -2091,88 +2164,43 @@ function bookingCreateFromForm(status, editIdOverride = null) {
     updatedAt: nowMs
   };
 
-  // Wenn es eine komplett neue Buchung ist (kein Edit), setze CreatedAt
+  // Wenn es eine komplett neue Buchung ist (kein Edit), setze createdAt
   if (!editIdOverride && (!document.getElementById("booking-edit-id") || !document.getElementById("booking-edit-id").value.trim())) {
     obj.createdAt = nowMs;
-    obj.offerValidUntilIso = getVal("booking-valid-until");
   }
 
-  // Speichern in lokaler Liste & Supabase wm_bookings
-  bookingUpsert(obj);
+  // Gültig bis Feld
+  obj.offerValidUntilIso = getVal('booking-valid-until');
 
-  if (msgEl) {
-    msgEl.innerHTML = `<span class="status-ok">Erfolgreich ${editIdOverride || document.getElementById("booking-edit-id").value ? 'aktualisiert' : 'gespeichert'}: <span class="mono">${escapeHtml(theId)}</span></span>`;
-  }
+  // WICHTIG: await nutzen, da bookingUpsert jetzt async (Cloud) ist!
+  bookingUpsert(obj).then(() => {
+      if (msgEl) msgEl.innerHTML = `<span class="status-ok">Erfolgreich ${editIdOverride ? 'aktualisiert' : 'gespeichert'}.</span> <span class="mono">${escapeHtml(theId)}</span>`;
 
-  // UI & Kalender aktualisieren
-  bookingRefreshUI();
+      // UI & Kalender aktualisieren
+      bookingRefreshUI();
 
-  // WICHTIG: wm_public_calendar updaten!
-  if (typeof savePublicCalendarToSupabase === "function") {
-    savePublicCalendarToSupabase();
-  }
-
-  // Hidden Field leeren nach erfolgreichem Speichern
-  if (document.getElementById("booking-edit-id")) {
-    document.getElementById("booking-edit-id").value = "";
-  }
-}
-
-function renderCalendarSafe() {
-  try { if (typeof WMKCAL !== "undefined" && typeof WMKCAL.render === "function") WMKCAL.render(); } catch(e) {}
-  try { if (typeof WMK_CAL !== "undefined" && typeof WMK_CAL.render === "function") WMK_CAL.render(); } catch(e) {}
-}
-
-function bookingRefreshUI() {
-  renderCalendarSafe();
-  bookingLoadAll();
-
-  const tbody = document.getElementById("booking-list");
-  if (!tbody) return;
-
-  const all = bookingLoadAll()
-    .filter(b => b && b.resourceId === BOOKING.RESOURCE_ID)
-    .slice()
-    .sort((a,b)=>Number(a.startMs)-Number(b.startMs));
-
-  if (!all.length) {
-    tbody.innerHTML = `<tr><td colspan="6" class="hint">Keine Buchungen gespeichert.</td></tr>`;
-    return;
-  }
-
-  tbody.innerHTML = all.map(b => {
-    const tagCls = b.status === "confirmed" ? "t-conf" : (b.status === "reserved" ? "t-res" : "t-canc");
-    const label = b.status === "confirmed" ? "bestätigt" : (b.status === "reserved" ? "reserviert" : "storniert");
-    const validIso = b.offerValidUntilIso ? ` | <span class="mono">${escapeHtml(b.offerValidUntilIso)}</span>` : "";
-    return `
-      <tr>
-        <td><span class="tag ${tagCls}">${label}</span></td>
-        <td class="mono">${fmtDT(b.startMs)}<br>${fmtDT(b.endMs)}</td>
-        <td>${escapeHtml(b.customer || "")}</td>
-        <td>${escapeHtml(b.ref || "")}${validIso}</td>
-        <td class="mono">${escapeHtml(b.id || "")}</td>
-        <td>
-          <button class="btn btn-muted" type="button" onclick="bookingSetStatusAction('${escapeHtml(b.id)}','cancelled')">Stornieren</button>
-          <button class="btn btn-danger" type="button" onclick="bookingDeleteAction('${escapeHtml(b.id)}')">Löschen</button>
-        </td>
-      </tr>
-    `;
-  }).join("");
+      // Hidden Field leeren nach erfolgreichem Speichern
+      if (document.getElementById('booking-edit-id')) {
+          document.getElementById('booking-edit-id').value = "";
+      }
+  });
 }
 
 function bookingSetStatusAction(id, status) {
-  bookingSetStatus(id, status);
-  bookingRefreshUI();
-  updateOfferBookingCheck(false);
-  try { if (typeof WMK_CAL!=="undefined") WMK_CAL.render(); } catch(e) {}
+  bookingSetStatus(id, status).then(() => {
+    bookingRefreshUI();
+    updateOfferBookingCheck(false);
+    try { if (typeof WMK_CAL!=="undefined") WMK_CAL.render(); } catch(e) {}
+  });
 }
 
 function bookingDeleteAction(id) {
   if (!confirm("Buchung wirklich löschen?")) return;
-  bookingDelete(id);
-  bookingRefreshUI();
-  updateOfferBookingCheck(false);
-  try { if (typeof WMK_CAL!=="undefined") WMK_CAL.render(); } catch(e) {}
+  bookingDelete(id).then(() => {
+    bookingRefreshUI();
+    updateOfferBookingCheck(false);
+    try { if (typeof WMK_CAL!=="undefined") WMK_CAL.render(); } catch(e) {}
+  });
 }
 
 function bookingExportJson() {
@@ -2213,7 +2241,7 @@ async function syncPublicCalendarToSupabase() {
         // 1. Lokale Buchungen abrufen und filtern (nur reservierte/bestätigte)
         const all = typeof bookingLoadAll === 'function' ? bookingLoadAll() : [];
         const events = all
-            .filter(b => b && b.resourceId === BOOKING.RESOURCEID)
+            .filter(b => b && b.resourceId === BOOKING.RESOURCE_ID)
             .filter(b => b.status === 'confirmed' || b.status === 'reserved')
             .map(b => ({
                 booking_id: String(b.id),
@@ -3342,55 +3370,7 @@ function bookingEditAction(id) {
   switchTab('buchungen-panel');
 }
 
-function bookingUpdateFromForm() {
-  const editId = document.getElementById("booking-edit-id") ? document.getElementById("booking-edit-id").value.trim() : "";
-  if (!editId) { 
-    alert('Keine Buchung ausgewählt! Bitte erst bei einer Buchung auf "Bearbeiten" klicken.'); 
-    return; 
-  }
 
-  // Finde den aktuellen Status der Buchung, damit wir ihn nicht versehentlich ändern
-  const b = bookingFindById(editId);
-  const currentStatus = b ? b.status : 'confirmed';
-
-  bookingCreateFromForm(currentStatus, editId);
-}
-
-
-// bookingRefreshUI KOMPLETT NEU MIT EDIT BUTTONS
-function bookingRefreshUI() {
-  console.log('Buchungen UI refreshed');
-  const tbody = document.getElementById('booking-list');
-  if (!tbody) return;
-
-  const all = bookingLoadAll();
-  tbody.innerHTML = '';
-
-  all.forEach(b => {
-    if (!b || b.resourceId !== BOOKING.RESOURCE_ID) return;
-
-    const statusClass = b.status === 'confirmed' ? 'status-ok' : b.status === 'reserved' ? 'status-bad' : 'status-muted';
-    const statusText = b.status === 'confirmed' ? 'Bestätigt' : b.status === 'reserved' ? 'Reserviert' : 'Storniert';
-
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td><span class="${statusClass}">${statusText}</span></td>
-      <td>${fmtDT(b.startMs)} - ${fmtDT(b.endMs)}</td>
-      <td>${escapeHtml(b.customer)}</td>
-      <td>${escapeHtml(b.ref || '')} ${b.offerValidUntilIso ? 'bis ' + b.offerValidUntilIso : ''}</td>
-      <td class="mono">${escapeHtml(String(b.id))}</td>
-      <td>
-        <button class="btn btn-muted" type="button" onclick="bookingEditAction('${b.id.replace(/'/g, "\\'")}')">Bearbeiten</button>
-        <button class="btn btn-secondary" type="button" onclick="bookingSetStatusAction('${b.id.replace(/'/g, "\\'")}', 'confirmed')">Bestätigen</button>
-        <button class="btn btn-danger" type="button" onclick="bookingSetStatusAction('${b.id.replace(/'/g, "\\'")}', 'cancelled')">Stornieren</button>
-        <button class="btn btn-danger" type="button" onclick="bookingDeleteAction('${b.id.replace(/'/g, "\\'")}')">Löschen</button>
-      </td>
-    `;
-    tbody.appendChild(row);
-  });
-}
-
-// bookingCreateFromForm erweitern (Parameter hinzufügen)
 </script>
 </body>
 </html>
