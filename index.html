@@ -2243,16 +2243,17 @@ async function syncPublicCalendarToSupabase() {
         // 1. Lokale Buchungen abrufen und filtern (nur reservierte/bestätigte)
         const all = typeof bookingLoadAll === 'function' ? bookingLoadAll() : [];
         const events = all
-            .filter(b => b && b.resourceId === BOOKING.RESOURCE_ID)
-            .filter(b => b.status === 'confirmed' || b.status === 'reserved')
-            .map(b => ({
-                booking_id: String(b.id),
-                title: b.status === 'confirmed' ? 'Gebucht' : 'Reserviert',
-                start_time: b.startMs ? new Date(b.startMs).toISOString() : null,
-                end_time: b.endMs ? new Date(b.endMs).toISOString() : null,
-                status: b.status
-            }))
-            .filter(b => b.start_time && b.end_time); // Nur valide Daten
+    .filter(b => b && b.resourceId === BOOKING.RESOURCE_ID)
+    .filter(b.status === 'confirmed' || b.status === 'reserved')
+    .map(b => ({
+        id: b.id,                    // ← **DIESE ZEILE HINZUFÜGEN** (oben!)
+        booking_id: String(b.id),
+        title: b.status === 'confirmed' ? 'Gebucht' : 'Reserviert',
+        start_time: b.startMs ? new Date(b.startMs).toISOString() : null,
+        end_time: b.endMs ? new Date(b.endMs).toISOString() : null,
+        status: b.status
+    }))
+    .filter(b => b.start_time && b.end_time); // Nur valide Daten
 
         // 2. Alte Kalenderdaten in Supabase komplett löschen
         const { error: deleteError } = await sb
