@@ -184,7 +184,7 @@ function switchTab(a, b) {
 
     .item-row {
       display: grid;
-      grid-template-columns: 2fr 1fr 1fr 1fr auto;
+      grid-template-columns: 1.3fr 2fr 0.8fr 1fr 0.8fr auto;
       gap: 10px;
       margin-bottom: 10px;
       align-items: end;
@@ -210,10 +210,10 @@ function switchTab(a, b) {
     .btn {
       flex: 1;
       min-width: 150px;
-      padding: 15px 30px;
+      padding: 12px 18px;
       border: none;
       border-radius: 8px;
-      font-size: 1.1em;
+      font-size: 1.02em;
       font-weight: bold;
       cursor: pointer;
       transition: all 0.3s ease;
@@ -229,7 +229,42 @@ function switchTab(a, b) {
     .btn-danger:hover { background: #a81f1f; }
 
     .btn-muted { background: #e9eef5; color: #1D334A; }
+    
     .btn-muted:hover { background: #dde6f2; }
+
+    /* Buchungen-Tab: Buttons kompakter und sauber umbrechbar */
+    #buchungen-panel .row {
+      align-items: end;
+    }
+
+    #buchungen-panel .row > .btn,
+    #buchungen-panel .row > label.btn {
+      flex: 0 1 auto;
+      min-width: 220px;
+      padding: 12px 16px;
+      font-size: 0.96em;
+      line-height: 1.2;
+      white-space: normal;
+    }
+
+    #buchungen-panel .table-plain .btn {
+      flex: 0 0 auto;
+      min-width: auto;
+      padding: 7px 10px;
+      font-size: 0.88em;
+    }
+
+    #buchungen-panel .info-box .row {
+      gap: 10px;
+    }
+
+    @media (max-width: 820px) {
+      #buchungen-panel .row > .btn,
+      #buchungen-panel .row > label.btn {
+        min-width: 100%;
+      }
+    }
+
 
     .preview {
       background: #f9f9f9;
@@ -337,7 +372,7 @@ function switchTab(a, b) {
 
     .wmk-cal-nav{display:flex;gap:8px;align-items:center}
 
-    .wmk-cal-controls{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;margin-top:10px}
+    .wmk-cal-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;margin-top:10px}
 
     /* Filterkacheln: genug Breite, Text immer sichtbar */
     .wmk-cal-toggles{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:10px;flex:1 1 100%}
@@ -355,7 +390,7 @@ function switchTab(a, b) {
     .wm-day.is-out{opacity:.45;cursor:default}
     .wm-day.is-selected{outline:3px solid rgba(29,51,74,.35);outline-offset:-2px}
     .wm-daynum{font-weight:900;color:#1D334A;font-size:1.05em;line-height:1}
-    .wm-holiday{margin-top:4px;color:#b71c1c;font-weight:900;font-size:.78em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .wm-holiday{margin-top:4px;color:#b71c1c;font-weight:900;font-size:.78em;white-space:nowrap; overflow:hidden; text-overflow:ellipsis;overflow:hidden;text-overflow:ellipsis}
 
     .wm-season-main{background:linear-gradient(0deg, rgba(215,231,255,.75), rgba(215,231,255,.75))}
     .wm-season-off{background:linear-gradient(0deg, rgba(255,231,209,.75), rgba(255,231,209,.75))}
@@ -384,7 +419,7 @@ function switchTab(a, b) {
     .wm-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.45);padding:18px;z-index:9999}
     .wm-modal.open{display:flex}
     .wm-modal-card{background:#fff;border-radius:16px;max-width:920px;width:100%;max-height:88vh;overflow:auto;border:1px solid #dbe3ee;box-shadow:0 18px 60px rgba(0,0,0,.22)}
-    .wm-modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid #e6edf6}
+    .wm-modal-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid #e6edf6}
     .wm-modal-body{padding:14px 16px}
     .wm-modal-close{border:1px solid #dbe3ee;background:#f7f9fc;color:#1D334A;border-radius:12px;padding:8px 10px;font-weight:900;cursor:pointer}
     .wm-modal-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
@@ -476,6 +511,10 @@ function switchTab(a, b) {
       <div class="form-group">
         <label for="angebot-kunde-name">Name / Firma *</label>
         <input type="text" id="angebot-kunde-name" placeholder="Max Mustermann / Musterfirma GmbH">
+      </div>
+      <div class="form-group">
+        <label for="angebot-kunde-email">E-Mail</label>
+        <input type="email" id="angebot-kunde-email" placeholder="name@beispiel.de">
       </div>
       <div class="form-group">
         <label for="angebot-kunde-adresse">Adresse *</label>
@@ -592,6 +631,10 @@ function switchTab(a, b) {
       <div class="form-group">
         <label for="auftragsbestaetigung-kunde-name">Name / Firma *</label>
         <input type="text" id="auftragsbestaetigung-kunde-name">
+      </div>
+      <div class="form-group">
+        <label for="auftragsbestaetigung-kunde-email">E-Mail</label>
+        <input type="email" id="auftragsbestaetigung-kunde-email" placeholder="name@beispiel.de">
       </div>
       <div class="form-group">
         <label for="auftragsbestaetigung-kunde-adresse">Adresse *</label>
@@ -711,6 +754,10 @@ function switchTab(a, b) {
         <input type="text" id="rechnung-kunde-name">
       </div>
       <div class="form-group">
+        <label for="rechnung-kunde-email">E-Mail</label>
+        <input type="email" id="rechnung-kunde-email" placeholder="name@beispiel.de">
+      </div>
+      <div class="form-group">
         <label for="rechnung-kunde-adresse">Adresse *</label>
         <input type="text" id="rechnung-kunde-adresse">
       </div>
@@ -731,7 +778,7 @@ function switchTab(a, b) {
       <div class="row">
         <div class="form-group">
           <label for="rechnung-nummer">Rechnungsnummer *</label>
-          <input type="text" id="rechnung-nummer" placeholder="R-2026-001">
+          <input type="text" id="rechnung-nummer" placeholder="RE-2026-001">
         </div>
         <div class="form-group">
           <label for="rechnung-datum">Rechnungsdatum *</label>
@@ -846,11 +893,6 @@ function switchTab(a, b) {
         </div>
 
         <div class="form-group">
-          <label for="booking-valid-until">Gültig bis (nur für reserviert, optional)</label>
-          <input type="date" id="booking-valid-until" placeholder="YYYY-MM-DD">
-        </div>
-
-        <div class="form-group">
           <label for="booking-note">Notiz</label>
           <textarea id="booking-note" placeholder="z.B. 4h Miete, Extras, etc."></textarea>
         </div>
@@ -889,7 +931,7 @@ function switchTab(a, b) {
             <th>Kunde</th>
             <th>Ref / gültig bis</th>
             <th>ID</th>
-            <th>Aktion</th>
+            <th style="min-width:780px;">Aktion</th>
           </tr>
           </thead>
           <tbody id="booking-list"></tbody>
@@ -1392,11 +1434,14 @@ var abDepositAuto = true;
             <td>${escapeHtml(b.customer)}</td>
             <td>${escapeHtml(b.ref)} ${validIso}</td>
             <td class="mono">${escapeHtml(b.id)}</td>
-            <td>
-              <button class="btn btn-muted" type="button" onclick="bookingEditAction('${escapeHtml(b.id)}')">Bearbeiten</button>
-              <button class="btn btn-secondary" type="button" onclick="bookingSetStatusAction('${escapeHtml(b.id)}', 'confirmed', null)">Bestätigen</button>
-              <button class="btn btn-danger" type="button" onclick="bookingSetStatusAction('${escapeHtml(b.id)}', 'cancelled', null)">Stornieren</button>
-              <button class="btn btn-danger" type="button" onclick="bookingDeleteAction('${escapeHtml(b.id)}')">Löschen</button>
+            <td style="min-width:520px; vertical-align:top; overflow:visible;">
+              <div style="display:flex; flex-direction:column; gap:10px; width:100%; max-width:520px;">
+                <button class="btn btn-muted" style="width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" type="button" onclick="bookingEditAction('${escapeHtml(b.id)}')">Bearbeiten</button>
+                <button class="btn btn-secondary" style="width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" type="button" onclick="bookingEditInOffer('${escapeHtml(b.id)}')">Im Angebot bearbeiten</button>
+                <button class="btn btn-secondary" style="width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" type="button" onclick="bookingSetStatusAction('${escapeHtml(b.id)}', 'confirmed', null)">Bestätigen</button>
+                <button class="btn btn-danger" style="width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" type="button" onclick="bookingSetStatusAction('${escapeHtml(b.id)}', 'cancelled', null)">Stornieren</button>
+                <button class="btn btn-danger" style="width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" type="button" onclick="bookingDeleteAction('${escapeHtml(b.id)}')">Löschen</button>
+              </div>
             </td>
           </tr>
         `;
@@ -1577,6 +1622,70 @@ function switchTab(type, ev) {
  *  ========================= */
 let itemCounters = { angebot: 0, rechnung: 0, auftragsbestaetigung: 0 };
 
+
+
+const DOCUMENT_NUMBERING = { offerPrefix: 'A', offerYear: 2026, offerDigits: 3, abPrefix: 'AB', rePrefix: 'RE' };
+
+function getNextDocumentNumber(kind) {
+  if (!window.supabaseClient || typeof window.supabaseClient.rpc !== 'function') return null;
+  return window.supabaseClient.rpc('next_document_number', { p_kind: kind });
+}
+
+const OFFER_ITEM_TEMPLATES = [
+  { label: 'Miete Eventfloß Aurora - Explorer Tour 4 h Mo - Do', description: 'Miete Eventfloß Aurora - Explorer Tour 4 h Mo - Do', price: 450.00 },
+  { label: 'Miete Eventfloß Aurora - Explorer Tour 4 h Fr - So & Feiertag', description: 'Miete Eventfloß Aurora - Explorer Tour 4 h Fr - So & Feiertag', price: 530.00 },
+  { label: 'Miete Eventfloß Aurora - Halbtags-Cruise 6 h Mo - Do', description: 'Miete Eventfloß Aurora - Halbtags-Cruise 6 h Mo - Do', price: 690.00 },
+  { label: 'Miete Eventfloß Aurora - Halbtags-Cruise 6 h Fr - So & Feiertag', description: 'Miete Eventfloß Aurora - Halbtags-Cruise 6 h Fr - So & Feiertag', price: 840.00 },
+  { label: 'Miete Eventfloß Aurora - Ganztags-Abenteuer 8 h Mo - Do', description: 'Miete Eventfloß Aurora - Ganztags-Abenteuer 8 h Mo - Do', price: 790.00 },
+  { label: 'Miete Eventfloß Aurora - Ganztags-Abenteuer 8 h Fr - So & Feiertag', description: 'Miete Eventfloß Aurora - Ganztags-Abenteuer 8 h Fr - So & Feiertag', price: 920.00 },
+  { label: 'Warnow Matrosen Box, Burger Style, p.P.', description: 'Warnow Matrosen Box, Burger Style, p.P.', price: 20.00 },
+  { label: 'Leinen Los Discount', description: 'Leinen Los Discount', price: null },
+  { label: 'Skipper p.h.', description: 'Skipper p.h.', price: 20.00 },
+  { label: 'Musikbox (pauschal)', description: 'Musikbox (pauschal)', price: 40.00 },
+  { label: 'Grillreinigung (pauschal)', description: 'Grillreinigung (pauschal)', price: 20.00 },
+  { label: 'Kühlbox (pauschal)', description: 'Kühlbox (pauschal)', price: 10.00 },
+  { label: 'Kühlbox inkl. Eiswürfel (pauschal)', description: 'Kühlbox inkl. Eiswürfel (pauschal)', price: null },
+  { label: 'Geschirrpaket', description: 'Geschirrpaket', price: 5.00 },
+  { label: 'Gläserservice', description: 'Gläserservice', price: 5.00 },
+  { label: 'Kaffeepaket (Maschine, Kapseln etc.)', description: 'Kaffeepaket (Maschine, Kapseln etc.)', price: 60.00 },
+  { label: 'Getränkepaket: Kaffee/Heißgetränke', description: 'Getränkepaket: Kaffee/Heißgetränke', price: 4.00 },
+  { label: 'Getränkepaket: Rostocker Bierspezialitäten', description: 'Getränkepaket: Rostocker Bierspezialitäten', price: 30.00 },
+  { label: 'Getränkepaket: AFG-Flatrate', description: 'Getränkepaket: AFG-Flatrate', price: 9.00 },
+  { label: 'Getränkepaket: Spritz & Sunset Paket', description: 'Getränkepaket: Spritz & Sunset Paket', price: 18.00 },
+  { label: 'Getränkepaket: Wein', description: 'Getränkepaket: Wein', price: null },
+  { label: 'Getränkepaket: Spezielle Getränke', description: 'Getränkepaket: Spezielle Getränke', price: null },
+  { label: 'Matrosenbox - Burger Style', description: 'Matrosenbox - Burger Style', price: 20.00 },
+  { label: 'Matrosenbox - Snacks', description: 'Matrosenbox - Snacks', price: 6.50 },
+  { label: 'Endreinigung Hund (pauschal)', description: 'Endreinigung Hund (pauschal)', price: 20.00 }
+];
+
+
+
+function offerItemTemplateOptions() {
+  return ['<option value="">Vorlage wählen …</option>', '<option value="__custom__">Freitext / manuell</option>']
+    .concat(OFFER_ITEM_TEMPLATES.map((item, index) => {
+      const priceLabel = typeof item.price === 'number' ? ' – ' + (new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(item.price)) : '';
+      return `<option value="${index}">${escapeHtml(item.label)}${priceLabel}</option>`;
+    }))
+    .join('');
+}
+
+function applyItemTemplate(selectEl) {
+  if (!selectEl) return;
+  const row = selectEl.closest('.item-row');
+  if (!row) return;
+  const desc = row.querySelector('.item-description') || row.querySelector('input[id*="-desc-"]');
+  const price = row.querySelector('.item-price') || row.querySelector('input[id*="-price-"]');
+  if (!desc || !price) return;
+  if (selectEl.value === '' || selectEl.value === '__custom__') return;
+  const tpl = OFFER_ITEM_TEMPLATES[Number(selectEl.value)];
+  if (!tpl) return;
+  desc.value = tpl.description || '';
+  if (typeof tpl.price === 'number' && !Number.isNaN(tpl.price)) {
+    price.value = tpl.price.toFixed(2);
+  }
+}
+
 function addItem(type) {
   const itemsContainer = document.getElementById(type + "-items");
   if (!itemsContainer) return;
@@ -1589,20 +1698,26 @@ function addItem(type) {
 
   itemRow.innerHTML = `
     <div class="form-group">
+      <label>Vorlage</label>
+      <select class="item-template" onchange="applyItemTemplate(this)">
+        ${offerItemTemplateOptions()}
+      </select>
+    </div>
+    <div class="form-group">
       <label>Beschreibung</label>
-      <input type="text" id="${type}-desc-${itemId}" placeholder="z.B. Floß-Miete 4 Stunden">
+      <input type="text" class="item-description" id="${type}-desc-${itemId}" placeholder="z.B. Floß-Miete 4 Stunden">
     </div>
     <div class="form-group">
       <label>Menge</label>
-      <input type="number" id="${type}-qty-${itemId}" value="1" min="1" step="1">
+      <input type="number" class="item-quantity" id="${type}-qty-${itemId}" value="1" min="1" step="1">
     </div>
     <div class="form-group">
       <label>Einzelpreis (Brutto)</label>
-      <input type="number" id="${type}-price-${itemId}" value="0" min="0" step="0.01">
+      <input type="number" class="item-price" id="${type}-price-${itemId}" value="0" step="0.01">
     </div>
     <div class="form-group">
       <label>MwSt.</label>
-      <input type="number" id="${type}-tax-${itemId}" value="19" min="0" step="1">
+      <input type="number" class="item-tax" id="${type}-tax-${itemId}" value="19" min="0" step="1">
     </div>
     <button class="remove-item-btn" type="button" onclick="removeItem('${type}', ${itemId})">✕</button>
   `;
@@ -1655,6 +1770,43 @@ function setHidden(id, value) {
   const el = document.getElementById(id);
   if (el) el.value = value;
 }
+
+async function getNextDocumentNumber(kind) {
+  if (typeof sb === "undefined" || !sb) {
+    throw new Error("Supabase nicht initialisiert");
+  }
+
+  const { data, error } = await sb.rpc("next_document_number", { p_kind: kind });
+  if (error) throw error;
+  if (!data) throw new Error("Keine Dokumentnummer erhalten");
+
+  return String(data).trim();
+}
+
+async function ensureDocumentNumber(kind, inputId) {
+  const el = document.getElementById(inputId);
+  if (!el) return null;
+
+  const existing = String(el.value || "").trim();
+  if (existing) return existing;
+
+  const nextNumber = await getNextDocumentNumber(kind);
+  el.value = nextNumber;
+  return nextNumber;
+}
+
+async function ensureOfferNumber() {
+  return await ensureDocumentNumber("offer", "angebot-nummer");
+}
+
+async function ensureAbNumber() {
+  return await ensureDocumentNumber("ab", "auftragsbestaetigung-nummer");
+}
+
+async function ensureInvoiceNumber() {
+  return await ensureDocumentNumber("invoice", "rechnung-nummer");
+}
+
 function getOrCreateOfferBookingId() {
   const existing = (getVal("angebot-booking-id") || "").trim();
   // Wenn schon eine ID drin steht und es eine UUID oder "alte" ID ist, die Supabase vielleicht noch akzeptiert? 
@@ -1949,6 +2101,7 @@ function saveJsonLocally(data, fileName) {
 
 async function saveAngebotJsonLocally() {
     bookingLoadAll();
+    try { await ensureOfferNumber(); } catch (err) { console.error(err); alert("Fehler bei Angebotsnummer."); return; }
     if (!getVal('angebot-nummer').trim()) { alert("Bitte eine Angebotsnummer eingeben."); return; }
 
     if (BOOKING.REQUIRE_FOR_OFFER) {
@@ -1976,6 +2129,7 @@ async function saveAngebotJsonLocally() {
 
 async function saveAuftragsbestaetigungJsonLocally() {
     bookingLoadAll();
+    try { await ensureAbNumber(); } catch (err) { console.error(err); alert("Fehler bei AB-Nummer."); return; }
     const data = buildAuftragsbestaetigungJson();
     if (!data.nummer) { alert("Bitte eine Auftragsbestätigungsnummer eingeben."); return; }
 
@@ -1997,6 +2151,7 @@ async function saveAuftragsbestaetigungJsonLocally() {
 }
 
 async function saveRechnungJsonLocally() {
+    try { await ensureInvoiceNumber(); } catch (err) { console.error(err); alert("Fehler bei Rechnungsnummer."); return; }
     const data = buildRechnungJson();
     if (!data.nummer) { alert("Bitte eine Rechnungsnummer eingeben."); return; }
 
@@ -2370,7 +2525,16 @@ function getDocMeta(type) {
   return { title:"AUFTRAGSBESTÄTIGUNG", numberLabel:"Auftragsbestätigungsnummer", numberId:"auftragsbestaetigung-nummer", dateId:"auftragsbestaetigung-datum", leistungId:"auftragsbestaetigung-leistung" };
 }
 
-function generatePreview(type) {
+async function generatePreview(type) {
+  try {
+    if (type === "angebot") await ensureOfferNumber();
+    if (type === "auftragsbestaetigung") await ensureAbNumber();
+    if (type === "rechnung") await ensureInvoiceNumber();
+  } catch (err) {
+    console.error("Fehler bei Dokumentnummer:", err);
+    alert("Dokumentnummer konnte nicht aus Supabase geladen werden: " + (err.message || err));
+    return;
+  }
   bookingLoadAll();
 
   if (type === "angebot" && BOOKING.REQUIRE_FOR_OFFER) {
@@ -3344,6 +3508,93 @@ function switchTab(a, b) {
 
 
 // NEUE EDIT-FUNKTIONEN
+
+function showGate(show) {
+  const overlay = document.getElementById('gateOverlay');
+  if (overlay) overlay.style.display = show ? 'flex' : 'none';
+}
+
+function setAuthStatus(html) {
+  const el = document.getElementById('authStatus');
+  if (el) el.innerHTML = html;
+}
+
+function getLoginValue(id) {
+  const el = document.getElementById(id);
+  return el ? (el.value || '').trim() : '';
+}
+
+async function ensureSupabaseReady() {
+  if (typeof window.supabase === 'undefined' || !window.supabase) {
+    throw new Error('Supabase SDK nicht geladen');
+  }
+  if (!window.supabaseClient) {
+    if (typeof SUPABASE_URL === 'undefined' || typeof SUPABASE_ANON_KEY === 'undefined') {
+      throw new Error('Supabase Konfiguration fehlt');
+    }
+    window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+  return window.supabaseClient;
+}
+
+async function login() {
+  try {
+    const client = await ensureSupabaseReady();
+    const email = getLoginValue('loginEmail');
+    const password = getLoginValue('loginPassword');
+    if (!email || !password) {
+      setAuthStatus('<span style="color:#b71c1c;font-weight:700">Bitte E-Mail und Passwort eingeben.</span>');
+      showGate(true);
+      return;
+    }
+    setAuthStatus('Prüfe Login ...');
+    const { error } = await client.auth.signInWithPassword({ email, password });
+    if (error) {
+      setAuthStatus('<span style="color:#b71c1c;font-weight:700">Login fehlgeschlagen: ' + escapeHtml(error.message || 'Unbekannter Fehler') + '</span>');
+      showGate(true);
+      return;
+    }
+    showGate(false);
+    setAuthStatus('<span style="color:#2e7d32;font-weight:700">Erfolgreich angemeldet.</span>');
+  } catch (e) {
+    setAuthStatus('<span style="color:#b71c1c;font-weight:700">Login-Fehler: ' + escapeHtml(String(e.message || e)) + '</span>');
+    showGate(true);
+  }
+}
+
+async function logout() {
+  try {
+    const client = await ensureSupabaseReady();
+    await client.auth.signOut();
+  } catch (e) {}
+  localStorage.removeItem('supabase.auth.token');
+  sessionStorage.clear();
+  showGate(true);
+  const pw = document.getElementById('loginPassword');
+  if (pw) pw.value = '';
+  setAuthStatus('Abgemeldet.');
+}
+
+async function initAuth() {
+  try {
+    const client = await ensureSupabaseReady();
+    const { data } = await client.auth.getSession();
+    if (data && data.session) {
+      showGate(false);
+      setAuthStatus('<span style="color:#2e7d32;font-weight:700">Angemeldet.</span>');
+    } else {
+      showGate(true);
+    }
+    client.auth.onAuthStateChange((_event, session) => {
+      showGate(!session);
+      if (session) setAuthStatus('<span style="color:#2e7d32;font-weight:700">Angemeldet.</span>');
+    });
+  } catch (e) {
+    showGate(true);
+    setAuthStatus('<span style="color:#b71c1c;font-weight:700">Auth konnte nicht geladen werden.</span>');
+  }
+}
+
 function toDT(ms) {
   if (!ms) return '';
   const d = new Date(ms);
@@ -3358,6 +3609,7 @@ function bookingEditAction(id) {
   }
 
   document.getElementById('booking-customer').value = b.customer || '';
+            if (document.getElementById('booking-email')) document.getElementById('booking-email').value = b.email || '';
   document.getElementById('booking-ref').value = b.ref || '';
   document.getElementById('booking-note').value = b.note || '';
   document.getElementById('booking-start').value = toDT(b.startMs);
@@ -3373,6 +3625,35 @@ function bookingEditAction(id) {
   switchTab('buchungen-panel');
 }
 
+
+
+function bookingEditInOffer(id) {
+  const b = bookingFindById(id);
+  if (!b) {
+    alert('Buchung nicht gefunden');
+    return;
+  }
+  const hid = document.getElementById('booking-edit-id');
+  if (hid) hid.value = String(b.id || '');
+  const offerBookingId = document.getElementById('angebot-booking-id');
+  if (offerBookingId) offerBookingId.value = String(b.id || '');
+  const customerName = document.getElementById('angebot-kunde-name');
+  if (customerName) customerName.value = b.customer || '';
+  const customerEmail = document.getElementById('angebot-kunde-email');
+  if (customerEmail) customerEmail.value = b.email || '';
+  const bookingStart = document.getElementById('angebot-booking-start');
+  if (bookingStart) bookingStart.value = toDT(b.startMs);
+  const bookingEnd = document.getElementById('angebot-booking-end');
+  if (bookingEnd) bookingEnd.value = toDT(b.endMs);
+  const note = document.getElementById('angebot-notizen');
+  if (note && !note.value && b.note) note.value = b.note;
+
+  const msgEl = document.getElementById('angebot-booking-status');
+  if (msgEl) {
+    msgEl.innerHTML = '<span class="status-ok">Reservierung geladen: <span class="mono">' + escapeHtml(String(b.id)) + '</span></span>';
+  }
+  switchTab('angebot-panel');
+}
 
 // --- VOLLAUTOMATISCHER KALENDER SYNC (SUPABASE -> GITHUB) ---
 async function fullAutoCalendarSync() {
