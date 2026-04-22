@@ -1253,32 +1253,7 @@ var abDepositAuto = true;
   }
 
   // SENDET EINE EINZELNE BUCHUNG/UPDATE AN SUPABASE (Upsert)
-  async function sendBookingMailToCustomer(booking, status) {
-    if (typeof sb === 'undefined' || !sb) return;
-    if (!booking || !booking.customer) return;
-
-    try {
-      const { data, error } = await sb.functions.invoke('booking-customer-mail', {
-        body: {
-          booking_id: booking.id,
-          customer: booking.customer,
-          ref: booking.ref || '',
-          start_time: booking.startMs ? new Date(booking.startMs).toISOString() : null,
-          end_time: booking.endMs ? new Date(booking.endMs).toISOString() : null,
-          status: status || booking.status || 'confirmed',
-          note: booking.note || '',
-          to: booking.email || booking.customer_email || null
-        }
-      });
-      if (error) console.error('Fehler beim Mail-Versand:', error);
-      return data || null;
-    } catch (e) {
-      console.error('Mail-Exception:', e);
-      return null;
-    }
-  }
-
-async function bookingUpsert(obj) {
+  async function bookingUpsert(obj) {
     // 1. In der lokalen Anzeige sofort aktualisieren (fürs Feeling)
     const idx = currentBookings.findIndex(x => x.id === obj.id);
     if (idx >= 0) {
@@ -1323,6 +1298,32 @@ async function bookingUpsert(obj) {
     
     // In der Cloud aktualisieren
     await bookingUpsert(currentBookings[idx]);
+    return true;
+  }
+
+
+  async function bookingUpdateTimes(id, startMs, endMs) {
+    const idx = currentBookings.findIndex(x => x.id === id);
+    if (idx < 0) return false;
+
+    const b = currentBookings[idx];
+    const oldStart = Number(b.startMs || 0);
+    const oldEnd = Number(b.endMs || 0);
+    const changed = Number(startMs) !== oldStart || Number(endMs) !== oldEnd;
+    b.startMs = Number(startMs);
+    b.endMs = Number(endMs);
+    b.updatedAt = Date.now();
+
+    await bookingUpsert(b);
+
+    if (changed && b.status === 'confirmed') {
+      b.calendar_sequence = Number(b.calendar_sequence || 0) + 1;
+      await sendBookingMailToCustomer({
+        ...b,
+        startMs: Number(startMs),
+        endMs: Number(endMs),
+      }, 'confirmed');
+    }
     return true;
   }
 
