@@ -1301,32 +1301,6 @@ var abDepositAuto = true;
     return true;
   }
 
-
-  async function bookingUpdateTimes(id, startMs, endMs) {
-    const idx = currentBookings.findIndex(x => x.id === id);
-    if (idx < 0) return false;
-
-    const b = currentBookings[idx];
-    const oldStart = Number(b.startMs || 0);
-    const oldEnd = Number(b.endMs || 0);
-    const changed = Number(startMs) !== oldStart || Number(endMs) !== oldEnd;
-    b.startMs = Number(startMs);
-    b.endMs = Number(endMs);
-    b.updatedAt = Date.now();
-
-    await bookingUpsert(b);
-
-    if (changed && b.status === 'confirmed') {
-      b.calendar_sequence = Number(b.calendar_sequence || 0) + 1;
-      await sendBookingMailToCustomer({
-        ...b,
-        startMs: Number(startMs),
-        endMs: Number(endMs),
-      }, 'confirmed');
-    }
-    return true;
-  }
-
   // BUCHUNG LÖSCHEN
   async function bookingDelete(id) {
     currentBookings = currentBookings.filter(b => b.id !== id);
