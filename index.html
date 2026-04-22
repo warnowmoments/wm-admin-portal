@@ -1735,6 +1735,29 @@ function setHidden(id, value) {
   const el = document.getElementById(id);
   if (el) el.value = value;
 }
+
+async function getNextDocumentNumber(kind) {
+  if (typeof sb === "undefined" || !sb) throw new Error("Supabase nicht initialisiert");
+  const { data, error } = await sb.rpc("next_document_number", { p_kind: kind });
+  if (error) throw error;
+  if (!data) throw new Error("Keine Dokumentnummer erhalten");
+  return String(data).trim();
+}
+
+async function ensureDocumentNumber(kind, inputId) {
+  const el = document.getElementById(inputId);
+  if (!el) return null;
+  const existing = String(el.value || "").trim();
+  if (existing) return existing;
+  const nextNumber = await getNextDocumentNumber(kind);
+  el.value = nextNumber;
+  return nextNumber;
+}
+
+async function ensureOfferNumber() { return await ensureDocumentNumber("offer", "angebot-nummer"); }
+async function ensureAbNumber() { return await ensureDocumentNumber("ab", "auftragsbestaetigung-nummer"); }
+async function ensureInvoiceNumber() { return await ensureDocumentNumber("invoice", "rechnung-nummer"); }
+
 function getOrCreateOfferBookingId() {
   const existing = (getVal("angebot-booking-id") || "").trim();
   // Wenn schon eine ID drin steht und es eine UUID oder "alte" ID ist, die Supabase vielleicht noch akzeptiert? 
@@ -2029,6 +2052,7 @@ function saveJsonLocally(data, fileName) {
 
 async function saveAngebotJsonLocally() {
     bookingLoadAll();
+    try { await ensureOfferNumber(); } catch (err) { console.error(err); alert("Fehler bei Angebotsnummer."); return; }
     if (!getVal('angebot-nummer').trim()) { alert("Bitte eine Angebotsnummer eingeben."); return; }
 
     if (BOOKING.REQUIRE_FOR_OFFER) {
@@ -2056,6 +2080,7 @@ async function saveAngebotJsonLocally() {
 
 async function saveAuftragsbestaetigungJsonLocally() {
     bookingLoadAll();
+    try { await ensureAbNumber(); } catch (err) { console.error(err); alert("Fehler bei AB-Nummer."); return; }
     const data = buildAuftragsbestaetigungJson();
     if (!data.nummer) { alert("Bitte eine Auftragsbestätigungsnummer eingeben."); return; }
 
@@ -2077,6 +2102,7 @@ async function saveAuftragsbestaetigungJsonLocally() {
 }
 
 async function saveRechnungJsonLocally() {
+    try { await ensureInvoiceNumber(); } catch (err) { console.error(err); alert("Fehler bei Rechnungsnummer."); return; }
     const data = buildRechnungJson();
     if (!data.nummer) { alert("Bitte eine Rechnungsnummer eingeben."); return; }
 
@@ -2450,7 +2476,7 @@ function getDocMeta(type) {
   return { title:"AUFTRAGSBESTÄTIGUNG", numberLabel:"Auftragsbestätigungsnummer", numberId:"auftragsbestaetigung-nummer", dateId:"auftragsbestaetigung-datum", leistungId:"auftragsbestaetigung-leistung" };
 }
 
-function generatePreview(type) {
+async function generatePreview(type) {
   bookingLoadAll();
 
   if (type === "angebot" && BOOKING.REQUIRE_FOR_OFFER) {
