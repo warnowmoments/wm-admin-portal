@@ -743,7 +743,7 @@ function switchTab(a, b) {
       <div class="row">
         <div class="form-group">
           <label for="rechnung-nummer">Rechnungsnummer *</label>
-          <input type="text" id="rechnung-nummer" placeholder="R-2026-001">
+          <input type="text" id="rechnung-nummer" placeholder="RE-2026-001">
         </div>
         <div class="form-group">
           <label for="rechnung-datum">Rechnungsdatum *</label>
@@ -756,9 +756,9 @@ function switchTab(a, b) {
           <input type="date" id="rechnung-leistung">
         </div>
         <div class="form-group">
-  	  <label for="rechnung-faellig">Fällig am (sofort)</label>
-  	  <input type="date" id="rechnung-faellig">
-	</div>
+          <label for="rechnung-faellig">Fällig am (automatisch +14 Tage)</label>
+          <input type="date" id="rechnung-faellig">
+        </div>
       </div>
       <div class="row">
         <div class="form-group">
@@ -1049,10 +1049,6 @@ var BOOKING = {
   REQUIRE_OFFER_VALID_UNTIL_FOR_RESERVATION: true
 };
 // KOMPATIBILITÄTS-ALIASE
-BOOKING.STORAGE_KEY = BOOKING.STORAGEKEY;
-BOOKING.RESOURCE_ID = BOOKING.RESOURCE_ID;
-BOOKING.EXPIRE_RESERVED_BY_OFFER_VALID_UNTIL = BOOKING.EXPIRERESERVEDBYOFFERVALIDUNTIL;
-BOOKING.REQUIRE_OFFER_VALID_UNTIL_FOR_RESERVATION = BOOKING.REQUIREOFFERVALIDUNTILFORRESERVATION;
 
 
 var DEPOSIT_RATE = 1 / 3;
@@ -1253,59 +1249,56 @@ var abDepositAuto = true;
   }
 
   // SENDET EINE EINZELNE BUCHUNG/UPDATE AN SUPABASE (Upsert)
- async function bookingUpsert(obj) {
-  const idx = currentBookings.findIndex(x => x.id === obj.id);
-  const now = Date.now();
+  async function bookingUpsert(obj) {
+    // 1. In der lokalen Anzeige sofort aktualisieren (fürs Feeling)
+    const idx = currentBookings.findIndex(x => x.id === obj.id);
+    if (idx >= 0) {
+      currentBookings[idx] = { ...currentBookings[idx], ...obj, updatedAt: Date.now() };
+    } else {
+      currentBookings.push({ ...obj, createdAt: Date.now(), updatedAt: Date.now() });
+    }
 
-  const merged = {
-    ...(idx >= 0 ? currentBookings[idx] : {}),
-    ...obj,
-    createdAt: obj.createdAt || (idx >= 0 ? currentBookings[idx].createdAt : now),
-    updatedAt: now,
-  };
-
-  if (idx >= 0) currentBookings[idx] = merged;
-  else currentBookings.push(merged);
-
-  if (typeof sb !== "undefined" && sb) {
+    // 2. An die Cloud senden
+if (typeof sb !== 'undefined' && sb) {
+  try {
     const dbObj = {
-      id: merged.id,
-      customer: merged.customer,
-      ref: merged.ref,
-      starttime: merged.startMs ? new Date(merged.startMs).toISOString() : null,
-      endtime: merged.endMs ? new Date(merged.endMs).toISOString() : null,
-      status: merged.status || "reserved",
-      note: merged.note,
-      resourceid: merged.resourceId || BOOKING.RESOURCEID,
-      createdat: merged.createdAt ? new Date(merged.createdAt).toISOString() : new Date().toISOString(),
-      updatedat: new Date().toISOString(),
-      offervaliduntiliso: merged.offerValidUntilIso || null,
-      validuntilms: merged.validUntilMs ?? null,
+      id: obj.id,
+      customer: obj.customer || '',
+      ref: obj.ref || '',
+      start_time: obj.startMs ? new Date(obj.startMs).toISOString() : null,
+      end_time: obj.endMs ? new Date(obj.endMs).toISOString() : null,
+      status: obj.status || 'reserved',
+      note: obj.note || '',
+      customer_email: obj.customer_email || '',   // <--- genau die Zeile fehlt
+      created_at: obj.createdAt ? new Date(obj.createdAt).toISOString() : new Date().toISOString()
     };
-
-    const { error } = await sb.from("wm_bookings").upsert(dbObj, { onConflict: "id" });
-    if (error) throw error;
-
-    await savePublicCalendarToSupabase();
+        
+        const { error } = await sb.from('wm_bookings').upsert(dbObj);
+        if (error) console.error("Fehler beim Speichern in der Cloud:", error);
+        
+        // Nach dem Speichern sofort den öffentlichen Kalender aktualisieren
+        await savePublicCalendarToSupabase();
+      } catch (e) {
+        console.error("Exception bei Upsert:", e);
+      }
+    }
   }
-}
-
 
   // STATUS ÄNDERN (Stornieren, Bestätigen)
-  async function bookingSetStatus(id, status, refOptional = null) {
+async function bookingSetStatus(id, status, refOptional = null) {
   const idx = currentBookings.findIndex(x => x.id === id);
   if (idx < 0) return false;
 
-  const item = {
-    ...currentBookings[idx],
-    status,
-    ref: refOptional || currentBookings[idx].ref || "",
-    updatedAt: Date.now(),
-  };
+  currentBookings[idx].status = status;
+  if (refOptional) currentBookings[idx].ref = refOptional;
 
-  currentBookings[idx] = item;
-  await bookingUpsert(item);
-  await savePublicCalendarToSupabase();
+  // E‑Mail aus dem Formular in das Booking‑Objekt schreiben
+  const kundeEmail = getVal("ab-kunde-email") || "";
+  currentBookings[idx].customer_email = kundeEmail;
+
+  currentBookings[idx].updatedAt = Date.now();
+
+  await bookingUpsert(currentBookings[idx]);
   return true;
 }
 
@@ -1350,43 +1343,34 @@ var abDepositAuto = true;
   }
 
   // ÖFFENTLICHEN KALENDER AKTUALISIEREN
-async function savePublicCalendarToSupabase() {
-  if (typeof sb === "undefined" || !sb) return;
-
-  const all = typeof bookingLoadAll === "function" ? bookingLoadAll() : currentBookings;
-  const events = all
-    .filter(b => b && b.resourceId === BOOKING.RESOURCEID)
-    .filter(b => b.status === "reserved" || b.status === "confirmed")
-    .map(b => ({
-      id: b.id,
-      booking_id: b.id,
-      title: b.status === "confirmed" ? "Gebucht" : "Reserviert",
-      start_time: b.startMs ? new Date(b.startMs).toISOString() : null,
-      end_time: b.endMs ? new Date(b.endMs).toISOString() : null,
-      status: b.status,
-      customer: b.customer || "",
-      ref: b.ref || "",
-      note: b.note || "",
-      updated_at: new Date().toISOString(),
-      sequence: Number(b.calendar_sequence || 0),
-    }))
-    .filter(e => e.start_time && e.end_time);
-
-  const { error: deleteError } = await sb
-    .from("wm_public_calendar")
-    .delete()
-    .neq("id", "__never__");
-
-  if (deleteError) throw deleteError;
-
-  if (events.length) {
-    const { error: insertError } = await sb
-      .from("wm_public_calendar")
-      .upsert(events, { onConflict: "id" });
-
-    if (insertError) throw insertError;
+  async function savePublicCalendarToSupabase() {
+    if (typeof sb === 'undefined' || !sb) return;
+    
+    // Wir nehmen die aktuellsten Daten
+    const all = currentBookings;
+    
+    const allEventsToSync = all.filter(b => b.resourceId === BOOKING.RESOURCE_ID).map(b => {
+      const isConf = (b.status === 'confirmed');
+      let title = 'Reserviert';
+      if (b.status === 'confirmed') title = 'Gebucht';
+      if (b.status === 'cancelled') title = 'Storniert';
+      
+      return {
+        id: b.id,
+        booking_id: b.id,
+        start_time: b.startMs ? new Date(b.startMs).toISOString() : null,
+        end_time: b.endMs ? new Date(b.endMs).toISOString() : null,
+        status: b.status,
+        title: title
+      };
+    });
+    
+    if (allEventsToSync.length > 0) {
+      try {
+        await sb.from('wm_public_calendar').upsert(allEventsToSync);
+      } catch(e) { console.error("Fehler beim Public Sync", e); }
+    }
   }
-}
 
   // ERSETZT DIE ALTE REFRESH FUNKTION - Lädt ERST aus der Cloud, DANN baut sie das UI
   async function bookingRefreshUI() {
@@ -1535,15 +1519,14 @@ document.addEventListener("DOMContentLoaded", function() {
   try { offerSyncBookingDateFromLeistung({force:false}); } catch (e) {}
 
 
-  const rDatum = document.getElementById('rechnung-datum');
-const rFaellig = document.getElementById('rechnung-faellig');
-
-if (rDatum && rFaellig) {
-  rFaellig.value = rDatum.value || today;
-  rDatum.addEventListener('change', function () {
-    if (this.value) rFaellig.value = this.value;
-  });
-}
+  const rDatum = document.getElementById("rechnung-datum");
+  const rFaellig = document.getElementById("rechnung-faellig");
+  if (rDatum && rFaellig) {
+    rFaellig.value = addDaysToISODate(rDatum.value || today, 14);
+    rDatum.addEventListener("change", function() {
+      if (this.value) rFaellig.value = addDaysToISODate(this.value, 14);
+    });
+  }
 
   const abDatum = document.getElementById("auftragsbestaetigung-datum");
   const abFaellig = document.getElementById("auftragsbestaetigung-anzahlung-faellig");
@@ -1568,6 +1551,26 @@ if (rDatum && rFaellig) {
     });
   }
 });
+
+
+  const angebotJsonFileAb = document.getElementById("angebot-json-file-ab");
+  if (angebotJsonFileAb) {
+    angebotJsonFileAb.addEventListener("change", function(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      const r = new FileReader();
+      r.onload = function() {
+        const raw = String(r.result || "").replace(/^﻿/, "").trim();
+        if (!raw) { alert("Die Datei ist leer."); return; }
+        let angebot;
+        try { angebot = JSON.parse(raw); } catch (e) { console.error("JSON Parse Fehler:", e, raw); alert("Ungültige Angebots-JSON"); return; }
+        try { fuelleAuftragsbestaetigungAusAngebot(angebot); alert("Angebot übernommen."); } catch (e) { console.error("Übernahmefehler:", e, angebot); alert("Fehler beim Übernehmen der Angebotsdaten."); }
+      };
+      r.onerror = function() { alert("Datei konnte nicht gelesen werden."); };
+      r.readAsText(file, "utf-8");
+      event.target.value = "";
+    });
+  }
 
 function setIfExists(id, value) {
   const el = document.getElementById(id);
@@ -1607,7 +1610,7 @@ let itemCounters = { angebot: 0, rechnung: 0, auftragsbestaetigung: 0 };
 
 
 
-const DOCUMENT_NUMBERING = { offerPrefix: 'A', offerYear: 2026, offerDigits: 3, abPrefix: 'AB', rePrefix: 'R' };
+const DOCUMENT_NUMBERING = { offerPrefix: 'A', offerYear: 2026, offerDigits: 3, abPrefix: 'AB', rePrefix: 'RE' };
 
 function getNextDocumentNumber(kind) {
   if (!window.supabaseClient || typeof window.supabaseClient.rpc !== 'function') return null;
@@ -1993,7 +1996,8 @@ function buildAngebotJson() {
       name: getVal("angebot-kunde-name"),
       adresse: getVal("angebot-kunde-adresse"),
       plz: getVal("angebot-kunde-plz"),
-      ort: getVal("angebot-kunde-ort")
+      ort: getVal("angebot-kunde-ort"),
+      email: getVal("angebot-kunde-email")
     },
     leistungsdatum: getVal("angebot-leistung"),
     gueltigBis: getVal("angebot-gueltig"),
@@ -2014,7 +2018,8 @@ function buildAuftragsbestaetigungJson() {
       name: getVal("auftragsbestaetigung-kunde-name"),
       adresse: getVal("auftragsbestaetigung-kunde-adresse"),
       plz: getVal("auftragsbestaetigung-kunde-plz"),
-      ort: getVal("auftragsbestaetigung-kunde-ort")
+      ort: getVal("auftragsbestaetigung-kunde-ort"),
+      email: getVal("auftragsbestaetigung-kunde-email")
     },
     leistungsdatum: getVal("auftragsbestaetigung-leistung"),
     positionen: collectItems("auftragsbestaetigung"),
@@ -2040,7 +2045,8 @@ function buildRechnungJson() {
       name: getVal("rechnung-kunde-name"),
       adresse: getVal("rechnung-kunde-adresse"),
       plz: getVal("rechnung-kunde-plz"),
-      ort: getVal("rechnung-kunde-ort")
+      ort: getVal("rechnung-kunde-ort"),
+      email: getVal("rechnung-kunde-email")
     },
     leistungsdatum: getVal("rechnung-leistung"),
     faellig: getVal("rechnung-faellig"),
@@ -2120,42 +2126,25 @@ async function saveAuftragsbestaetigungJsonLocally() {
 }
 
 async function saveRechnungJsonLocally() {
-  try {
-    await ensureInvoiceNumber();
-  } catch (err) {
-    console.error(err);
-    alert("Fehler bei Rechnungsnummer.");
-    return;
-  }
+    try { await ensureInvoiceNumber(); } catch (err) { console.error(err); alert("Fehler bei Rechnungsnummer."); return; }
+    const data = buildRechnungJson();
+    if (!data.nummer) { alert("Bitte eine Rechnungsnummer eingeben."); return; }
 
-  const data = buildRechnungJson();
-  if (!data.nummer) {
-    alert("Bitte eine Rechnungsnummer eingeben.");
-    return;
-  }
+    saveJsonLocally(data, data.nummer + ".json");
 
-  saveJsonLocally(data, data.nummer + ".json");
-
-  if (typeof sb !== "undefined" && sb) {
-    try {
-      const { error } = await sb.from("wm_documents").insert([{
-        type: "rechnung",
-        number: String(data.nummer),
-        customer_name: data.kunde ? data.kunde.name : null,
-        content: data
-      }]);
-
-      if (error) {
-        console.error("Fehler beim Speichern Supabase,", error);
-        alert("Fehler beim Speichern in Supabase: " + error.message);
-      } else {
-        console.log("Erfolgreich in Supabase gespeichert.");
-      }
-    } catch (e) {
-      console.error("Unerwarteter Fehler Supabase,", e);
-      alert("Unerwarteter Supabase Fehler.");
+    if (typeof sb !== "undefined" && sb) {
+        try {
+            const { error } = await sb.from('wm_documents').insert({
+                type: 'rechnung',
+                number: String(data.nummer),
+                customer_name: data.kunde ? data.kunde.name : null,
+                content: data
+            });
+            if (error) { console.error("Fehler beim Speichern (Supabase):", error); alert("Fehler beim Speichern in Supabase: " + error.message); } else { console.log("Erfolgreich in Supabase gespeichert."); }
+        } catch (e) { console.error("Unerwarteter Fehler (Supabase):", e); alert("Unerwarteter Supabase Fehler."); }
     }
-  }
+}
+
 /** =========================
  *  LOAD JSON
  *  ========================= */
@@ -2184,6 +2173,7 @@ function fuelleAuftragsbestaetigungAusAngebot(angebot) {
   setIfExists("auftragsbestaetigung-kunde-adresse", angebot.kunde.adresse || "");
   setIfExists("auftragsbestaetigung-kunde-plz", angebot.kunde.plz || "");
   setIfExists("auftragsbestaetigung-kunde-ort", angebot.kunde.ort || "");
+  setIfExists("auftragsbestaetigung-kunde-email", angebot.kunde.email || "");
 
   setIfExists("auftragsbestaetigung-leistung", angebot.leistungsdatum || "");
   setIfExists("auftragsbestaetigung-referenz-angebot", angebot.nummer || "");
@@ -2247,6 +2237,7 @@ function fuelleRechnungAusAuftragsbestaetigung(ab) {
   setIfExists("rechnung-kunde-adresse", ab.kunde.adresse || "");
   setIfExists("rechnung-kunde-plz", ab.kunde.plz || "");
   setIfExists("rechnung-kunde-ort", ab.kunde.ort || "");
+  setIfExists("rechnung-kunde-email", ab.kunde.email || "");
 
   setIfExists("rechnung-leistung", ab.leistungsdatum || "");
   setIfExists("rechnung-referenz-ab", ab.nummer || "");
@@ -2280,7 +2271,7 @@ function fuelleRechnungAusAuftragsbestaetigung(ab) {
 /** =========================
  *  BUCHUNGEN PANEL
  *  ========================= */
-async function bookingCreateFromForm(status, editIdOverride = null) {
+function bookingCreateFromForm(status, editIdOverride = null) {
   const msgEl = document.getElementById("booking-msg");
   const customer = (getVal("booking-customer") || "").trim();
   const ref = (getVal("booking-ref") || "").trim();
@@ -2288,13 +2279,11 @@ async function bookingCreateFromForm(status, editIdOverride = null) {
 
   const startD = dtLocalToDate(getVal("booking-start"));
   const endD = dtLocalToDate(getVal("booking-end"));
-  if (!startD || !endD) {
-    if (msgEl) msgEl.innerHTML = `<span class="status-bad">Bitte Start/Ende setzen.</span>`;
-    return;
-  }
+  if (!startD || !endD) { if (msgEl) msgEl.innerHTML = `<span class="status-bad">Bitte Start/Ende setzen.</span>`; return; }
 
+  // HIER IST DER FIX: Hole die ID zum Überschreiben!
   let theId = editIdOverride || (document.getElementById("booking-edit-id") ? document.getElementById("booking-edit-id").value.trim() : "");
-  if (!theId) theId = bookingUid();
+  if (!theId) theId = bookingUid(); // Neue ID, wenn keine im Hidden-Field steht
 
   const nowMs = Date.now();
   const obj = {
@@ -2305,36 +2294,14 @@ async function bookingCreateFromForm(status, editIdOverride = null) {
     startMs: startD.getTime(),
     endMs: endD.getTime(),
     status: status,
-    resourceId: BOOKING.RESOURCEID,
-    updatedAt: nowMs,
-    offerValidUntilIso: (getVal("booking-valid-until") || "").trim() || null
+    resourceId: BOOKING.RESOURCE_ID,
+    updatedAt: nowMs
   };
 
+  // Wenn es eine komplett neue Buchung ist (kein Edit), setze createdAt
   if (!editIdOverride && (!document.getElementById("booking-edit-id") || !document.getElementById("booking-edit-id").value.trim())) {
     obj.createdAt = nowMs;
   }
-
-  try {
-    await bookingUpsert(obj);
-
-    if (msgEl) {
-      msgEl.innerHTML = `<span class="status-ok">Erfolgreich ${editIdOverride ? "aktualisiert" : "gespeichert"}.</span> <span class="mono">${escapeHtml(theId)}</span>`;
-    }
-
-    const hid = document.getElementById("booking-edit-id");
-    if (hid) hid.value = "";
-
-    await bookingRefreshUI();
-    await updateOfferBookingCheck(false);
-
-    if (typeof WMKCAL !== "undefined" && WMKCAL && typeof WMKCAL.render === "function") {
-      WMKCAL.render();
-    }
-  } catch (e) {
-    console.error(e);
-    if (msgEl) msgEl.innerHTML = `<span class="status-bad">Speichern fehlgeschlagen: ${escapeHtml(String(e.message || e))}</span>`;
-  }
-}
 
   // Gültig bis Feld
   obj.offerValidUntilIso = getVal('booking-valid-until');
@@ -3658,35 +3625,55 @@ function bookingEditInOffer(id) {
 
 // --- VOLLAUTOMATISCHER KALENDER SYNC (SUPABASE -> GITHUB) ---
 async function fullAutoCalendarSync() {
-  const btn = document.querySelector('button[onclick="fullAutoCalendarSync()"]');
-  const oldText = btn ? btn.innerHTML : "Website-Kalender aktualisieren";
+    const btn = document.querySelector('button[onclick="fullAutoCalendarSync()"]');
+    const oldText = btn ? btn.innerHTML : "Website-Kalender aktualisieren";
 
-  try {
-    if (btn) {
-      btn.innerHTML = "Aktualisiere Website...";
-      btn.disabled = true;
+    try {
+        if (btn) {
+            btn.innerHTML = '⏳ Aktualisiere Website...';
+            btn.disabled = true;
+        }
+
+        // 1. Zuerst unsere Supabase Tabelle updaten
+        await savePublicCalendarToSupabase();
+        console.log("Supabase Tabelle aktualisiert.");
+
+        // 2. Die Supabase Edge Function aufrufen (ohne manuelles fetch!)
+        const { data, error } = await sb.functions.invoke('automatic-public-calendar', {
+            method: 'POST'
+        });
+
+        // 3. Fehlerbehandlung
+        if (error) {
+            throw error; // Springt direkt in den Catch-Block
+        }
+
+        if (data && data.success) {
+            alert("✅ Website-Kalender wurde erfolgreich aktualisiert!");
+        } else {
+            console.error("Fehler von Edge Function:", data);
+            alert("❌ Fehler beim Update der Website: " + (data?.error || "Unbekannt"));
+        }
+
+    } catch (e) {
+        // Hier landen alle Netzwerk-, CORS- und Invoke-Fehler
+        console.error("Netzwerkfehler beim Edge Function Call:", e);
+        
+        // Kleine Hilfe für uns beim Debuggen
+        let errorMessage = "Netzwerkfehler beim Aktualisieren.";
+        if (e.message && e.message.includes("Failed to fetch")) {
+            errorMessage += "\n\nHinweis: Hast du die Deno-Datei in Supabase deployed und den lokalen Python-Server gestartet?";
+        }
+        
+        alert("❌ " + errorMessage);
+    } finally {
+        if (btn) {
+            btn.innerHTML = oldText;
+            btn.disabled = false;
+        }
     }
-
-    await savePublicCalendarToSupabase();
-
-    if (btn) btn.innerHTML = "Fertig!";
-    setTimeout(() => {
-      if (btn) {
-        btn.innerHTML = oldText;
-        btn.disabled = false;
-      }
-    }, 700);
-
-    alert("Website-Kalender wurde erfolgreich aktualisiert.");
-  } catch (e) {
-    console.error("Sync Fehler", e);
-    alert("Fehler beim Update der Website: " + String(e.message || e));
-    if (btn) {
-      btn.innerHTML = oldText;
-      btn.disabled = false;
-    }
-  }
 }
+
 
 </script>
 </body>
