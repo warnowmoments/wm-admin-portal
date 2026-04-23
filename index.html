@@ -743,7 +743,7 @@ function switchTab(a, b) {
       <div class="row">
         <div class="form-group">
           <label for="rechnung-nummer">Rechnungsnummer *</label>
-          <input type="text" id="rechnung-nummer" placeholder="RE-2026-001">
+          <input type="text" id="rechnung-nummer" placeholder="R-2026-001">
         </div>
         <div class="form-group">
           <label for="rechnung-datum">Rechnungsdatum *</label>
@@ -756,9 +756,9 @@ function switchTab(a, b) {
           <input type="date" id="rechnung-leistung">
         </div>
         <div class="form-group">
-          <label for="rechnung-faellig">Fällig am (automatisch +14 Tage)</label>
-          <input type="date" id="rechnung-faellig">
-        </div>
+  	  <label for="rechnung-faellig">Fällig am (sofort)</label>
+  	  <input type="date" id="rechnung-faellig">
+	</div>
       </div>
       <div class="row">
         <div class="form-group">
@@ -1253,53 +1253,61 @@ var abDepositAuto = true;
   }
 
   // SENDET EINE EINZELNE BUCHUNG/UPDATE AN SUPABASE (Upsert)
-  async function bookingUpsert(obj) {
-    // 1. In der lokalen Anzeige sofort aktualisieren (fürs Feeling)
-    const idx = currentBookings.findIndex(x => x.id === obj.id);
-    if (idx >= 0) {
-      currentBookings[idx] = { ...currentBookings[idx], ...obj, updatedAt: Date.now() };
-    } else {
-      currentBookings.push({ ...obj, createdAt: Date.now(), updatedAt: Date.now() });
-    }
+ async function bookingUpsert(obj) {
+  const idx = currentBookings.findIndex(x => x.id === obj.id);
+  const now = Date.now();
 
-    // 2. An die Cloud senden
-    if (typeof sb !== 'undefined' && sb) {
-      try {
-        const dbObj = {
-          id: obj.id,
-          customer: obj.customer || '',
-          ref: obj.ref || '',
-          start_time: obj.startMs ? new Date(obj.startMs).toISOString() : null,
-          end_time: obj.endMs ? new Date(obj.endMs).toISOString() : null,
-          status: obj.status || 'reserved',
-          note: obj.note || '',
-          created_at: obj.createdAt ? new Date(obj.createdAt).toISOString() : new Date().toISOString()
-        };
-        
-        const { error } = await sb.from('wm_bookings').upsert(dbObj);
-        if (error) console.error("Fehler beim Speichern in der Cloud:", error);
-        
-        // Nach dem Speichern sofort den öffentlichen Kalender aktualisieren
-        await savePublicCalendarToSupabase();
-      } catch (e) {
-        console.error("Exception bei Upsert:", e);
-      }
-    }
+  const merged = {
+    ...(idx >= 0 ? currentBookings[idx] : {}),
+    ...obj,
+    createdAt: obj.createdAt || (idx >= 0 ? currentBookings[idx].createdAt : now),
+    updatedAt: now,
+  };
+
+  if (idx >= 0) currentBookings[idx] = merged;
+  else currentBookings.push(merged);
+
+  if (typeof sb !== "undefined" && sb) {
+    const dbObj = {
+      id: merged.id,
+      customer: merged.customer,
+      ref: merged.ref,
+      starttime: merged.startMs ? new Date(merged.startMs).toISOString() : null,
+      endtime: merged.endMs ? new Date(merged.endMs).toISOString() : null,
+      status: merged.status || "reserved",
+      note: merged.note,
+      resourceid: merged.resourceId || BOOKING.RESOURCEID,
+      createdat: merged.createdAt ? new Date(merged.createdAt).toISOString() : new Date().toISOString(),
+      updatedat: new Date().toISOString(),
+      offervaliduntiliso: merged.offerValidUntilIso || null,
+      validuntilms: merged.validUntilMs ?? null,
+    };
+
+    const { error } = await sb.from("wm_bookings").upsert(dbObj, { onConflict: "id" });
+    if (error) throw error;
+
+    await savePublicCalendarToSupabase();
   }
+}
+
 
   // STATUS ÄNDERN (Stornieren, Bestätigen)
   async function bookingSetStatus(id, status, refOptional = null) {
-    const idx = currentBookings.findIndex(x => x.id === id);
-    if (idx < 0) return false;
-    
-    currentBookings[idx].status = status;
-    if (refOptional) currentBookings[idx].ref = refOptional;
-    currentBookings[idx].updatedAt = Date.now();
-    
-    // In der Cloud aktualisieren
-    await bookingUpsert(currentBookings[idx]);
-    return true;
-  }
+  const idx = currentBookings.findIndex(x => x.id === id);
+  if (idx < 0) return false;
+
+  const item = {
+    ...currentBookings[idx],
+    status,
+    ref: refOptional || currentBookings[idx].ref || "",
+    updatedAt: Date.now(),
+  };
+
+  currentBookings[idx] = item;
+  await bookingUpsert(item);
+  await savePublicCalendarToSupabase();
+  return true;
+}
 
   // BUCHUNG LÖSCHEN
   async function bookingDelete(id) {
@@ -1342,34 +1350,43 @@ var abDepositAuto = true;
   }
 
   // ÖFFENTLICHEN KALENDER AKTUALISIEREN
-  async function savePublicCalendarToSupabase() {
-    if (typeof sb === 'undefined' || !sb) return;
-    
-    // Wir nehmen die aktuellsten Daten
-    const all = currentBookings;
-    
-    const allEventsToSync = all.filter(b => b.resourceId === BOOKING.RESOURCE_ID).map(b => {
-      const isConf = (b.status === 'confirmed');
-      let title = 'Reserviert';
-      if (b.status === 'confirmed') title = 'Gebucht';
-      if (b.status === 'cancelled') title = 'Storniert';
-      
-      return {
-        id: b.id,
-        booking_id: b.id,
-        start_time: b.startMs ? new Date(b.startMs).toISOString() : null,
-        end_time: b.endMs ? new Date(b.endMs).toISOString() : null,
-        status: b.status,
-        title: title
-      };
-    });
-    
-    if (allEventsToSync.length > 0) {
-      try {
-        await sb.from('wm_public_calendar').upsert(allEventsToSync);
-      } catch(e) { console.error("Fehler beim Public Sync", e); }
-    }
+async function savePublicCalendarToSupabase() {
+  if (typeof sb === "undefined" || !sb) return;
+
+  const all = typeof bookingLoadAll === "function" ? bookingLoadAll() : currentBookings;
+  const events = all
+    .filter(b => b && b.resourceId === BOOKING.RESOURCEID)
+    .filter(b => b.status === "reserved" || b.status === "confirmed")
+    .map(b => ({
+      id: b.id,
+      booking_id: b.id,
+      title: b.status === "confirmed" ? "Gebucht" : "Reserviert",
+      start_time: b.startMs ? new Date(b.startMs).toISOString() : null,
+      end_time: b.endMs ? new Date(b.endMs).toISOString() : null,
+      status: b.status,
+      customer: b.customer || "",
+      ref: b.ref || "",
+      note: b.note || "",
+      updated_at: new Date().toISOString(),
+      sequence: Number(b.calendar_sequence || 0),
+    }))
+    .filter(e => e.start_time && e.end_time);
+
+  const { error: deleteError } = await sb
+    .from("wm_public_calendar")
+    .delete()
+    .neq("id", "__never__");
+
+  if (deleteError) throw deleteError;
+
+  if (events.length) {
+    const { error: insertError } = await sb
+      .from("wm_public_calendar")
+      .upsert(events, { onConflict: "id" });
+
+    if (insertError) throw insertError;
   }
+}
 
   // ERSETZT DIE ALTE REFRESH FUNKTION - Lädt ERST aus der Cloud, DANN baut sie das UI
   async function bookingRefreshUI() {
@@ -1518,14 +1535,15 @@ document.addEventListener("DOMContentLoaded", function() {
   try { offerSyncBookingDateFromLeistung({force:false}); } catch (e) {}
 
 
-  const rDatum = document.getElementById("rechnung-datum");
-  const rFaellig = document.getElementById("rechnung-faellig");
-  if (rDatum && rFaellig) {
-    rFaellig.value = addDaysToISODate(rDatum.value || today, 14);
-    rDatum.addEventListener("change", function() {
-      if (this.value) rFaellig.value = addDaysToISODate(this.value, 14);
-    });
-  }
+  const rDatum = document.getElementById('rechnung-datum');
+const rFaellig = document.getElementById('rechnung-faellig');
+
+if (rDatum && rFaellig) {
+  rFaellig.value = rDatum.value || today;
+  rDatum.addEventListener('change', function () {
+    if (this.value) rFaellig.value = this.value;
+  });
+}
 
   const abDatum = document.getElementById("auftragsbestaetigung-datum");
   const abFaellig = document.getElementById("auftragsbestaetigung-anzahlung-faellig");
@@ -1589,7 +1607,7 @@ let itemCounters = { angebot: 0, rechnung: 0, auftragsbestaetigung: 0 };
 
 
 
-const DOCUMENT_NUMBERING = { offerPrefix: 'A', offerYear: 2026, offerDigits: 3, abPrefix: 'AB', rePrefix: 'RE' };
+const DOCUMENT_NUMBERING = { offerPrefix: 'A', offerYear: 2026, offerDigits: 3, abPrefix: 'AB', rePrefix: 'R' };
 
 function getNextDocumentNumber(kind) {
   if (!window.supabaseClient || typeof window.supabaseClient.rpc !== 'function') return null;
@@ -2102,25 +2120,42 @@ async function saveAuftragsbestaetigungJsonLocally() {
 }
 
 async function saveRechnungJsonLocally() {
-    try { await ensureInvoiceNumber(); } catch (err) { console.error(err); alert("Fehler bei Rechnungsnummer."); return; }
-    const data = buildRechnungJson();
-    if (!data.nummer) { alert("Bitte eine Rechnungsnummer eingeben."); return; }
+  try {
+    await ensureInvoiceNumber();
+  } catch (err) {
+    console.error(err);
+    alert("Fehler bei Rechnungsnummer.");
+    return;
+  }
 
-    saveJsonLocally(data, data.nummer + ".json");
+  const data = buildRechnungJson();
+  if (!data.nummer) {
+    alert("Bitte eine Rechnungsnummer eingeben.");
+    return;
+  }
 
-    if (typeof sb !== "undefined" && sb) {
-        try {
-            const { error } = await sb.from('wm_documents').insert({
-                type: 'rechnung',
-                number: String(data.nummer),
-                customer_name: data.kunde ? data.kunde.name : null,
-                content: data
-            });
-            if (error) { console.error("Fehler beim Speichern (Supabase):", error); alert("Fehler beim Speichern in Supabase: " + error.message); } else { console.log("Erfolgreich in Supabase gespeichert."); }
-        } catch (e) { console.error("Unerwarteter Fehler (Supabase):", e); alert("Unerwarteter Supabase Fehler."); }
+  saveJsonLocally(data, data.nummer + ".json");
+
+  if (typeof sb !== "undefined" && sb) {
+    try {
+      const { error } = await sb.from("wm_documents").insert([{
+        type: "rechnung",
+        number: String(data.nummer),
+        customer_name: data.kunde ? data.kunde.name : null,
+        content: data
+      }]);
+
+      if (error) {
+        console.error("Fehler beim Speichern Supabase,", error);
+        alert("Fehler beim Speichern in Supabase: " + error.message);
+      } else {
+        console.log("Erfolgreich in Supabase gespeichert.");
+      }
+    } catch (e) {
+      console.error("Unerwarteter Fehler Supabase,", e);
+      alert("Unerwarteter Supabase Fehler.");
     }
-}
-
+  }
 /** =========================
  *  LOAD JSON
  *  ========================= */
@@ -2245,7 +2280,7 @@ function fuelleRechnungAusAuftragsbestaetigung(ab) {
 /** =========================
  *  BUCHUNGEN PANEL
  *  ========================= */
-function bookingCreateFromForm(status, editIdOverride = null) {
+async function bookingCreateFromForm(status, editIdOverride = null) {
   const msgEl = document.getElementById("booking-msg");
   const customer = (getVal("booking-customer") || "").trim();
   const ref = (getVal("booking-ref") || "").trim();
@@ -2253,11 +2288,13 @@ function bookingCreateFromForm(status, editIdOverride = null) {
 
   const startD = dtLocalToDate(getVal("booking-start"));
   const endD = dtLocalToDate(getVal("booking-end"));
-  if (!startD || !endD) { if (msgEl) msgEl.innerHTML = `<span class="status-bad">Bitte Start/Ende setzen.</span>`; return; }
+  if (!startD || !endD) {
+    if (msgEl) msgEl.innerHTML = `<span class="status-bad">Bitte Start/Ende setzen.</span>`;
+    return;
+  }
 
-  // HIER IST DER FIX: Hole die ID zum Überschreiben!
   let theId = editIdOverride || (document.getElementById("booking-edit-id") ? document.getElementById("booking-edit-id").value.trim() : "");
-  if (!theId) theId = bookingUid(); // Neue ID, wenn keine im Hidden-Field steht
+  if (!theId) theId = bookingUid();
 
   const nowMs = Date.now();
   const obj = {
@@ -2268,14 +2305,36 @@ function bookingCreateFromForm(status, editIdOverride = null) {
     startMs: startD.getTime(),
     endMs: endD.getTime(),
     status: status,
-    resourceId: BOOKING.RESOURCE_ID,
-    updatedAt: nowMs
+    resourceId: BOOKING.RESOURCEID,
+    updatedAt: nowMs,
+    offerValidUntilIso: (getVal("booking-valid-until") || "").trim() || null
   };
 
-  // Wenn es eine komplett neue Buchung ist (kein Edit), setze createdAt
   if (!editIdOverride && (!document.getElementById("booking-edit-id") || !document.getElementById("booking-edit-id").value.trim())) {
     obj.createdAt = nowMs;
   }
+
+  try {
+    await bookingUpsert(obj);
+
+    if (msgEl) {
+      msgEl.innerHTML = `<span class="status-ok">Erfolgreich ${editIdOverride ? "aktualisiert" : "gespeichert"}.</span> <span class="mono">${escapeHtml(theId)}</span>`;
+    }
+
+    const hid = document.getElementById("booking-edit-id");
+    if (hid) hid.value = "";
+
+    await bookingRefreshUI();
+    await updateOfferBookingCheck(false);
+
+    if (typeof WMKCAL !== "undefined" && WMKCAL && typeof WMKCAL.render === "function") {
+      WMKCAL.render();
+    }
+  } catch (e) {
+    console.error(e);
+    if (msgEl) msgEl.innerHTML = `<span class="status-bad">Speichern fehlgeschlagen: ${escapeHtml(String(e.message || e))}</span>`;
+  }
+}
 
   // Gültig bis Feld
   obj.offerValidUntilIso = getVal('booking-valid-until');
@@ -3599,57 +3658,36 @@ function bookingEditInOffer(id) {
 
 // --- VOLLAUTOMATISCHER KALENDER SYNC (SUPABASE -> GITHUB) ---
 async function fullAutoCalendarSync() {
-    const btn = document.querySelector('button[onclick="fullAutoCalendarSync()"]');
-    const oldText = btn ? btn.innerHTML : "Website-Kalender aktualisieren";
+  const btn = document.querySelector('button[onclick="fullAutoCalendarSync()"]');
+  const oldText = btn ? btn.innerHTML : "Website-Kalender aktualisieren";
 
-    try {
-        if (btn) {
-            btn.innerHTML = '⏳ Aktualisiere Website...';
-            btn.disabled = true;
-        }
-
-        // 1. Zuerst unsere Supabase Tabelle updaten
-        await savePublicCalendarToSupabase();
-        console.log("Supabase Tabelle aktualisiert.");
-
-        // 2. Die Supabase Edge Function aufrufen (ohne manuelles fetch!)
-        const { data, error } = await sb.functions.invoke('automatic-public-calendar', {
-            method: 'POST'
-        });
-
-        // 3. Fehlerbehandlung
-        if (error) {
-            throw error; // Springt direkt in den Catch-Block
-        }
-
-        if (data && data.success) {
-            alert("✅ Website-Kalender wurde erfolgreich aktualisiert!");
-        } else {
-            console.error("Fehler von Edge Function:", data);
-            alert("❌ Fehler beim Update der Website: " + (data?.error || "Unbekannt"));
-        }
-
-    } catch (e) {
-        // Hier landen alle Netzwerk-, CORS- und Invoke-Fehler
-        console.error("Netzwerkfehler beim Edge Function Call:", e);
-        
-        // Kleine Hilfe für uns beim Debuggen
-        let errorMessage = "Netzwerkfehler beim Aktualisieren.";
-        if (e.message && e.message.includes("Failed to fetch")) {
-            errorMessage += "\n\nHinweis: Hast du die Deno-Datei in Supabase deployed und den lokalen Python-Server gestartet?";
-        }
-        
-        alert("❌ " + errorMessage);
-    } finally {
-        if (btn) {
-            btn.innerHTML = oldText;
-            btn.disabled = false;
-        }
+  try {
+    if (btn) {
+      btn.innerHTML = "Aktualisiere Website...";
+      btn.disabled = true;
     }
-}
 
+    await savePublicCalendarToSupabase();
+
+    if (btn) btn.innerHTML = "Fertig!";
+    setTimeout(() => {
+      if (btn) {
+        btn.innerHTML = oldText;
+        btn.disabled = false;
+      }
+    }, 700);
+
+    alert("Website-Kalender wurde erfolgreich aktualisiert.");
+  } catch (e) {
+    console.error("Sync Fehler", e);
+    alert("Fehler beim Update der Website: " + String(e.message || e));
+    if (btn) {
+      btn.innerHTML = oldText;
+      btn.disabled = false;
+    }
+  }
+}
 
 </script>
 </body>
 </html>
-
