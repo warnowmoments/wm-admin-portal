@@ -1441,6 +1441,43 @@ async function bookingSetStatus(id, status, ref = null, customerEmail = null) {
   }
 }
 
+async function bookingSetStatusAction(id, status, ref = null, customerEmail = null) {
+  if (!id) return false;
+
+  try {
+    const ok = await bookingSetStatus(id, status, ref, customerEmail);
+
+    if (!ok) {
+      alert("Statuswechsel fehlgeschlagen.");
+      return false;
+    }
+
+    await bookingRefreshUI();
+
+    try {
+      if (typeof updateOfferBookingCheck === "function") {
+        updateOfferBookingCheck(false);
+      }
+    } catch (e) {
+      console.warn("updateOfferBookingCheck Fehler:", e);
+    }
+
+    try {
+      if (typeof WMKCAL !== "undefined" && typeof WMKCAL.render === "function") {
+        WMKCAL.render();
+      }
+    } catch (e) {
+      console.warn("WMKCAL render Fehler:", e);
+    }
+
+    return true;
+  } catch (e) {
+    console.error("bookingSetStatusAction Fehler:", e);
+    alert("Statuswechsel fehlgeschlagen: " + e.message);
+    return false;
+  }
+}
+
 async function bookingDeleteAction(id) {
   if (!id) return;
 
@@ -1450,7 +1487,7 @@ async function bookingDeleteAction(id) {
     return;
   }
 
-  const okConfirm = confirm(`Möchtest du diese Buchung wirklich endgültig löschen?\n\n${booking.customer || ""}\n${booking.ref || ""}`);
+  const okConfirm = confirm(`Möchtest du diese Buchung wirklich endgültig löschen?\\n\\n${booking.customer || ""}\\n${booking.ref || ""}`);
   if (!okConfirm) return;
 
   try {
