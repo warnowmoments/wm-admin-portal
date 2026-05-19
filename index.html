@@ -469,7 +469,7 @@ function switchTab(a, b) {
 
 
 
-<!-- Angebot -->
+  <!-- Angebot -->
   <div id="angebot-panel" class="document-panel active">
     <div class="form-section">
       <h2>Kundeninformationen</h2>
@@ -546,7 +546,6 @@ function switchTab(a, b) {
           <button class="btn btn-muted" type="button" onclick="offerSetFullDay()">Ganzer Tag setzen (00:00–23:59)</button>
         </div>
 
-
         <div class="row" style="margin-top:10px;">
           <button class="btn btn-muted" type="button" onclick="switchTab('buchungen')">Buchungen öffnen</button>
           <button class="btn btn-secondary" type="button" onclick="reserveOfferNow()">Jetzt reservieren</button>
@@ -576,10 +575,16 @@ function switchTab(a, b) {
       <button class="btn btn-primary" onclick="generatePreview('angebot')">Vorschau anzeigen</button>
       <button class="btn btn-secondary" onclick="printDocument()">Drucken / PDF</button>
       <button class="btn btn-secondary" onclick="saveAngebotJsonLocally()">Angebot speichern (JSON)</button>
+      
+      <label class="btn btn-muted" style="cursor: pointer; text-align: center;">
+        Altes Angebot laden (JSON)
+        <input type="file" accept="application/json" style="display: none;" onchange="loadAngebotJsonForAngebot(event)">
+      </label>
     </div>
 
     <div id="angebot-preview" class="preview"></div>
   </div>
+
 
   <!-- Auftragsbestätigung -->
   <div id="auftragsbestaetigung-panel" class="document-panel">
@@ -694,14 +699,20 @@ function switchTab(a, b) {
     </div>
 
     <div class="actions">
-  <button class="btn btn-primary" onclick="generatePreview('auftragsbestaetigung')">Vorschau anzeigen</button>
-  <button class="btn btn-secondary" onclick="printDocument()">Drucken / PDF</button>
-  <button class="btn btn-secondary" onclick="saveAuftragsbestaetigungJsonLocally()">Auftragsbestätigung speichern (JSON)</button>
-  <button class="btn btn-primary" onclick="sendAuftragsbestaetigungMail()">Kundenmail senden</button>
-</div>
+      <button class="btn btn-primary" onclick="generatePreview('auftragsbestaetigung')">Vorschau anzeigen</button>
+      <button class="btn btn-secondary" onclick="printDocument()">Drucken / PDF</button>
+      <button class="btn btn-secondary" onclick="saveAuftragsbestaetigungJsonLocally()">AB speichern (JSON)</button>
+      <button class="btn btn-primary" onclick="sendAuftragsbestaetigungMail()">Kundenmail senden</button>
+
+      <label class="btn btn-muted" style="cursor: pointer; text-align: center;">
+        Alte AB laden (JSON)
+        <input type="file" accept="application/json" style="display: none;" onchange="loadAuftragsbestaetigungJsonForAB(event)">
+      </label>
+    </div>
 
     <div id="auftragsbestaetigung-preview" class="preview"></div>
   </div>
+
 
   <!-- Rechnung -->
   <div id="rechnung-panel" class="document-panel">
@@ -821,6 +832,11 @@ function switchTab(a, b) {
       <button class="btn btn-primary" onclick="generatePreview('rechnung')">Vorschau anzeigen</button>
       <button class="btn btn-secondary" onclick="printDocument()">Drucken / PDF</button>
       <button class="btn btn-secondary" onclick="saveRechnungJsonLocally()">Rechnung speichern (JSON)</button>
+      
+      <label class="btn btn-muted" style="cursor: pointer; text-align: center;">
+        Alte Rechnung laden (JSON)
+        <input type="file" accept="application/json" style="display: none;" onchange="loadRechnungJsonForRechnung(event)">
+      </label>
     </div>
 
     <div id="rechnung-preview" class="preview"></div>
@@ -1212,6 +1228,11 @@ var abDepositAuto = true;
     return currentBookings;
   }
 
+function bookingFindById(id) {
+  if (!id) return null;
+  return (currentBookings || []).find(b => b && b.id === id) || null;
+}
+
   // PRÜFT AUF ABGELAUFENE ANGEBOTE
   function bookingExpireReservationsOnArray(arr) {
   if (!BOOKING.EXPIRE_RESERVED_BY_OFFER_VALID_UNTIL) return { arr, changed: false };
@@ -1266,39 +1287,56 @@ var abDepositAuto = true;
 
   // SENDET EINE EINZELNE BUCHUNG/UPDATE AN SUPABASE (Upsert)
 async function bookingUpsert(obj) {
-  const previous = currentBookings.find(x => x.id === obj.id) || null;
+  const normalized = {
+    id: obj.id,
+    resourceId: obj.resourceId || obj.resource_id || BOOKING.RESOURCE_ID || null,
+    customer: obj.customer || null,
+    customerEmail: obj.customerEmail || obj.customer_email || null,
+    ref: obj.ref || null,
+    note: obj.note || null,
+    status: String(obj.status || 'reserved').toLowerCase(),
+    startMs: obj.startMs ?? (obj.start_time ? new Date(obj.start_time).getTime() : null),
+    endMs: obj.endMs ?? (obj.end_time ? new Date(obj.end_time).getTime() : null),
+    google_event_id: obj.google_event_id || obj.google_Event_Id || null,
+    google_synced_at: obj.google_synced_at || obj.google_Synced_At || null,
+    google_sync_error: obj.google_sync_error || obj.google_Sync_Error || null,
+    calendar_sequence: obj.calendar_sequence ?? obj.calendar_Sequence ?? 0,
+    offerValidUntilIso: obj.offerValidUntilIso || obj.offer_valid_until || null
+  };
+
+  const previous = currentBookings.find(x => x.id === normalized.id) || null;
   const oldStatus = String(previous?.status || '').toLowerCase();
-  const newStatus = String(obj.status || 'reserved').toLowerCase();
+  const newStatus = normalized.status;
   const timeChanged =
     previous &&
     (
-      String(previous.startMs || '') !== String(obj.startMs || '') ||
-      String(previous.endMs || '') !== String(obj.endMs || '')
+      String(previous.startMs || '') !== String(normalized.startMs || '') ||
+      String(previous.endMs || '') !== String(normalized.endMs || '')
     );
 
-  const idx = currentBookings.findIndex(x => x.id === obj.id);
+  const idx = currentBookings.findIndex(x => x.id === normalized.id);
   if (idx >= 0) {
-    currentBookings[idx] = { ...currentBookings[idx], ...obj, updatedAt: Date.now() };
+    currentBookings[idx] = { ...currentBookings[idx], ...normalized, updatedAt: Date.now() };
   } else {
-    currentBookings.push({ ...obj, createdAt: Date.now(), updatedAt: Date.now() });
+    currentBookings.push({ ...normalized, createdAt: Date.now(), updatedAt: Date.now() });
   }
 
   if (typeof sb === 'undefined' || !sb) return;
 
   try {
     const dbObj = {
-      id: obj.id,
-      customer: obj.customer || null,
-      ref: obj.ref || null,
-      start_time: obj.startMs ? new Date(obj.startMs).toISOString() : null,
-      end_time: obj.endMs ? new Date(obj.endMs).toISOString() : null,
-      status: newStatus,
-      note: obj.note || null,
-      google_event_id: obj.google_Event_Id || obj.google_event_id || null,
-      google_synced_at: obj.google_Synced_At || obj.google_synce_dat || null,
-      google_sync_error: obj.google_Sync_Error || obj.google_sync_error || null,
-      calendar_sequence: obj.calendar_Sequence ?? obj.calendar_sequence ?? 0,
-      customer_email: obj.customer_Email || obj.customer_email || null
+      id: normalized.id,
+      customer: normalized.customer,
+      ref: normalized.ref,
+      start_time: normalized.startMs ? new Date(normalized.startMs).toISOString() : null,
+      end_time: normalized.endMs ? new Date(normalized.endMs).toISOString() : null,
+      status: normalized.status,
+      note: normalized.note,
+      google_event_id: normalized.google_event_id,
+      google_synced_at: normalized.google_synced_at,
+      google_sync_error: normalized.google_sync_error,
+      calendar_sequence: normalized.calendar_sequence,
+      customer_email: normalized.customerEmail
     };
 
     console.log("[DBG bookingUpsert] start", {
@@ -1317,7 +1355,7 @@ async function bookingUpsert(obj) {
 
     if (error) {
       console.error("Fehler beim Speichern in der Cloud", error);
-      return;
+      throw error;
     }
 
     console.log("[DBG bookingUpsert] supabase upsert ok", dbObj.id);
@@ -1359,7 +1397,7 @@ async function bookingUpsert(obj) {
     }
 
     if (typeof savePublicCalendarToSupabase === 'function') {
-      if (newStatus === 'reserved' || newStatus === 'confirmed') {
+      if (newStatus === 'reserved' || newStatus === 'confirmed' || newStatus === 'cancelled') {
         await savePublicCalendarToSupabase();
         console.log("[DBG bookingUpsert] savePublicCalendarToSupabase done", dbObj.id);
       }
@@ -1368,6 +1406,7 @@ async function bookingUpsert(obj) {
     }
   } catch (e) {
     console.error("Exception bei Upsert:", e);
+    throw e;
   }
 }
 
@@ -1387,7 +1426,10 @@ async function bookingSetStatus(id, status, ref = null, customerEmail = null) {
     ref: ref !== null && ref !== undefined ? String(ref) : (existing.ref || ''),
     customerEmail: customerEmail !== null && customerEmail !== undefined
       ? String(customerEmail)
-      : (existing.customerEmail || existing.customer_email || null)
+      : (existing.customerEmail || existing.customer_email || null),
+    resourceId: existing.resourceId || existing.resource_id || BOOKING.RESOURCE_ID || null,
+    startMs: existing.startMs ?? (existing.start_time ? new Date(existing.start_time).getTime() : null),
+    endMs: existing.endMs ?? (existing.end_time ? new Date(existing.end_time).getTime() : null)
   };
 
   try {
@@ -1396,6 +1438,45 @@ async function bookingSetStatus(id, status, ref = null, customerEmail = null) {
   } catch (e) {
     console.error("bookingSetStatus Fehler:", e);
     return false;
+  }
+}
+
+async function bookingDeleteAction(id) {
+  if (!id) return;
+
+  const booking = bookingFindById(id);
+  if (!booking) {
+    alert("Buchung nicht gefunden.");
+    return;
+  }
+
+  const okConfirm = confirm(`Möchtest du diese Buchung wirklich endgültig löschen?\n\n${booking.customer || ""}\n${booking.ref || ""}`);
+  if (!okConfirm) return;
+
+  try {
+    currentBookings = currentBookings.filter(b => b && b.id !== id);
+
+    if (typeof sb !== "undefined" && sb) {
+      const { error } = await sb
+        .from("wm_bookings")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+    }
+
+    await bookingRefreshUI();
+
+    try {
+      if (typeof WMKCAL !== "undefined" && typeof WMKCAL.render === "function") {
+        WMKCAL.render();
+      }
+    } catch (e) {
+      console.warn("Kalender-Refresh fehlgeschlagen:", e);
+    }
+  } catch (e) {
+    console.error("bookingDeleteAction Fehler:", e);
+    alert("Löschen fehlgeschlagen: " + e.message);
   }
 }
 
@@ -1412,9 +1493,21 @@ async function bookingRefreshUI() {
   if (!tbody) return;
 
   const all = currentBookings
-    .filter(b => b.resourceId === BOOKING.RESOURCE_ID)
+    .filter(b => {
+      if (!b) return false;
+      if (!b.resourceId) return true;
+      return b.resourceId === BOOKING.RESOURCE_ID;
+    })
+    .map(b => ({
+      ...b,
+      customer: b.customer || '',
+      ref: b.ref || '',
+      startMs: b.startMs ?? (b.start_time ? new Date(b.start_time).getTime() : null),
+      endMs: b.endMs ?? (b.end_time ? new Date(b.end_time).getTime() : null),
+      status: String(b.status || 'reserved').toLowerCase()
+    }))
     .slice()
-    .sort((a, b) => Number(a.startMs) - Number(b.startMs));
+    .sort((a, b) => Number(a.startMs || 0) - Number(b.startMs || 0));
 
   if (!all.length) {
     tbody.innerHTML = `<tr><td colspan="6" class="hint">Keine Buchungen gefunden.</td></tr>`;
@@ -1445,8 +1538,12 @@ async function bookingRefreshUI() {
   }
 
   try {
-    if (typeof WMKCAL !== 'undefined' && typeof WMKCAL.render === 'function') WMKCAL.render();
-  } catch (e) {}
+    if (typeof WMKCAL !== 'undefined' && typeof WMKCAL.render === 'function') {
+      WMKCAL.render();
+    }
+  } catch (e) {
+    console.warn("WMKCAL render Fehler:", e);
+  }
 }
 
 /** =========================
@@ -1838,7 +1935,7 @@ function getOrCreateOfferBookingId() {
   return bookingUid(); // Generiert eine saubere UUID v4
 }
 
-function updateOfferBookingCheck(forceMessage=false) {
+function updateOfferBookingCheck(forceMessage = false) {
   bookingLoadAll();
 
   const statusEl = document.getElementById("angebot-booking-status");
@@ -1850,47 +1947,84 @@ function updateOfferBookingCheck(forceMessage=false) {
   const endD = dtLocalToDate(endVal);
 
   if (!startD || !endD) {
-    if (forceMessage && statusEl) statusEl.innerHTML = `<span class="status-bad">Bitte Start und Ende auswählen.</span>`;
-    return { ok:false, startMs:null, endMs:null, conflicts:[] };
+    if (forceMessage && statusEl) {
+      statusEl.innerHTML = `<span class="status-bad">Bitte Start und Ende auswählen.</span>`;
+    }
+    return { ok: false, startMs: null, endMs: null, conflicts: [] };
   }
 
   const startMs = startD.getTime();
   const endMs = endD.getTime();
 
   if (!(startMs < endMs)) {
-    if (statusEl) statusEl.innerHTML = `<span class="status-bad">Ende muss nach Start liegen.</span>`;
-    return { ok:false, startMs, endMs, conflicts:[] };
+    if (statusEl) {
+      statusEl.innerHTML = `<span class="status-bad">Ende muss nach Start liegen.</span>`;
+    }
+    return { ok: false, startMs, endMs, conflicts: [] };
   }
 
   const ignoreId = (getVal("angebot-booking-id") || "").trim() || null;
-  const conflicts = bookingConflicts(startMs, endMs, ignoreId);
+  let conflicts = bookingConflicts(startMs, endMs, ignoreId);
 
-  if (conflicts.length) {
-    const lines = conflicts.slice().sort((a,b)=>a.startMs-b.startMs).slice(0,8).map(b=>{
-      const tag = b.status === "confirmed" ? "t-conf" : "t-res";
-      const label = b.status === "confirmed" ? "bestätigt" : "reserviert";
-      return `<div style="margin-top:6px;">
-        <span class="tag ${tag}">${label}</span>
-        <span class="mono">${fmtDT(b.startMs)} – ${fmtDT(b.endMs)}</span>
-        ${b.customer ? ` | <strong>${escapeHtml(b.customer)}</strong>` : ``}
-        ${b.ref ? ` | Ref: ${escapeHtml(b.ref)}` : ``}
-      </div>`;
-    }).join("");
+  const sameRangeConflicts = conflicts.filter(b => {
+    return Number(b.startMs) === startMs && Number(b.endMs) === endMs;
+  });
 
-    if (statusEl) statusEl.innerHTML = `<span class="status-bad">Belegt im gewählten Zeitraum (${conflicts.length} Treffer).</span>${lines}`;
-    return { ok:false, startMs, endMs, conflicts };
+  const hasExistingBooking = !!ignoreId;
+  const offerValidUntil = (getVal("angebot-gueltig") || "").trim();
+
+  if (hasExistingBooking && offerValidUntil && sameRangeConflicts.length === conflicts.length) {
+    if (statusEl) {
+      statusEl.innerHTML = `<span class="status-ok">Bestehende Reservierung erkannt – identischer Zeitraum wird akzeptiert.</span>`;
+    }
+    return { ok: true, startMs, endMs, conflicts: [] };
   }
 
-  if (statusEl) statusEl.innerHTML = `<span class="status-ok">Frei – keine Überschneidung gefunden.</span>`;
-  return { ok:true, startMs, endMs, conflicts:[] };
+  if (conflicts.length) {
+    const lines = conflicts
+      .slice()
+      .sort((a, b) => a.startMs - b.startMs)
+      .slice(0, 8)
+      .map(b => {
+        const tag = b.status === "confirmed" ? "t-conf" : "t-res";
+        const label = b.status === "confirmed" ? "bestätigt" : "reserviert";
+        return `<div style="margin-top:6px;">
+          <span class="tag ${tag}">${label}</span>
+          <span class="mono">${fmtDT(b.startMs)} – ${fmtDT(b.endMs)}</span>
+          ${b.customer ? ` | <strong>${escapeHtml(b.customer)}</strong>` : ``}
+          ${b.ref ? ` | Ref: ${escapeHtml(b.ref)}` : ``}
+        </div>`;
+      })
+      .join("");
+
+    if (statusEl) {
+      statusEl.innerHTML = `<span class="status-bad">Belegt im gewählten Zeitraum (${conflicts.length} Treffer).</span>${lines}`;
+    }
+    return { ok: false, startMs, endMs, conflicts };
+  }
+
+  if (statusEl) {
+    statusEl.innerHTML = `<span class="status-ok">Frei – keine Überschneidung gefunden.</span>`;
+  }
+
+  return { ok: true, startMs, endMs, conflicts: [] };
 }
 
 async function ensureOfferReservation({ reason = "save", forceCheckMessage = false } = {}) {
-  const chk = updateOfferBookingCheck(forceCheckMessage);
-  if (!chk.ok) return false;
-
+  const bookingId = getVal("angebot-booking-id").trim();
+  const startLocal = getVal("angebot-booking-start").trim();
+  const endLocal = getVal("angebot-booking-end").trim();
   const offerValidUntilIso = getVal("angebot-gueltig").trim();
   const validUntilMs = isoDateEndOfDayMs(offerValidUntilIso);
+
+  const hasExistingReservation = !!bookingId;
+  const hasCompleteExistingData = !!(
+    bookingId &&
+    startLocal &&
+    endLocal &&
+    offerValidUntilIso &&
+    isFinite(validUntilMs)
+  );
 
   if (BOOKING.EXPIRE_RESERVED_BY_OFFER_VALID_UNTIL || BOOKING.REQUIRE_OFFER_VALID_UNTIL_FOR_RESERVATION) {
     if (!offerValidUntilIso || !isFinite(validUntilMs)) {
@@ -1902,7 +2036,28 @@ async function ensureOfferReservation({ reason = "save", forceCheckMessage = fal
     }
   }
 
-  const id = getOrCreateOfferBookingId();
+  let chk = updateOfferBookingCheck(forceCheckMessage);
+
+  if (!chk.ok) {
+    if (hasExistingReservation && startLocal && endLocal) {
+      const startD = dtLocalToDate(startLocal);
+      const endD = dtLocalToDate(endLocal);
+
+      if (startD && endD) {
+        chk = {
+          ok: true,
+          startMs: startD.getTime(),
+          endMs: endD.getTime()
+        };
+      }
+    }
+  }
+
+  if (!chk.ok) {
+    return false;
+  }
+
+  const id = bookingId || getOrCreateOfferBookingId();
   const customer = getVal("angebot-kunde-name").trim();
   const customer_email = getVal("angebot-kunde-email").trim();
   const ref = getVal("angebot-nummer").trim();
@@ -1918,7 +2073,9 @@ async function ensureOfferReservation({ reason = "save", forceCheckMessage = fal
     note,
     startMs: chk.startMs,
     endMs: chk.endMs,
-    offerValidUntilIso
+    offerValidUntilIso,
+    hasExistingReservation,
+    hasCompleteExistingData
   });
 
   await bookingUpsert({
@@ -1926,7 +2083,7 @@ async function ensureOfferReservation({ reason = "save", forceCheckMessage = fal
     resourceId: BOOKING.RESOURCE_ID || BOOKING.RESOURCEID,
     status: "reserved",
     customer,
-    customer_email: customer_email,
+    customer_email,
     ref,
     note,
     startMs: chk.startMs,
@@ -1942,7 +2099,7 @@ async function ensureOfferReservation({ reason = "save", forceCheckMessage = fal
 
   const statusEl = document.getElementById("angebot-booking-status");
   if (statusEl) {
-    statusEl.innerHTML = `<span class="status-ok">Reserviert (${reason === "save" ? "automatisch" : "manuell"}). ID: <span class="mono">${escapeHtml(id)}</span>, gültig bis <span class="mono">${escapeHtml(offerValidUntilIso)}</span></span>`;
+    statusEl.innerHTML = `<span class="status-ok">Reservierung ${hasExistingReservation ? "aktualisiert" : "gespeichert"} (${reason === "save" ? "automatisch" : "manuell"}). ID: <span class="mono">${escapeHtml(id)}</span>, gültig bis <span class="mono">${escapeHtml(offerValidUntilIso)}</span></span>`;
   }
 
   return true;
@@ -2118,28 +2275,29 @@ function buildAuftragsbestaetigungJson() {
 
 function buildRechnungJson() {
   return {
-    typ: "rechnung",
-    nummer: getVal("rechnung-nummer"),
-    datum: getVal("rechnung-datum"),
+    typ: 'rechnung',
+    nummer: getVal('rechnung-nummer'),
+    datum: getVal('rechnung-datum'),
+    bookingId: getVal('rechnung-booking-id') || null,
     kunde: {
-      name: getVal("rechnung-kunde-name"),
-      adresse: getVal("rechnung-kunde-adresse"),
-      plz: getVal("rechnung-kunde-plz"),
-      ort: getVal("rechnung-kunde-ort"),
-      email: getVal("rechnung-kunde-email")
+      name: getVal('rechnung-kunde-name'),
+      adresse: getVal('rechnung-kunde-adresse'),
+      plz: getVal('rechnung-kunde-plz'),
+      ort: getVal('rechnung-kunde-ort'),
+      email: getVal('rechnung-kunde-email') || ''
     },
-    leistungsdatum: getVal("rechnung-leistung"),
-    faellig: getVal("rechnung-faellig"),
-    referenzAuftragsbestaetigung: getVal("rechnung-referenz-ab"),
-    referenzAngebot: getVal("rechnung-referenz-angebot"),
-    positionen: collectItems("rechnung"),
+    leistungsdatum: getVal('rechnung-leistung'),
+    faellig: getVal('rechnung-faellig'),
+    referenzAuftragsbestaetigung: getVal('rechnung-referenz-ab'),
+    referenzAngebot: getVal('rechnung-referenz-angebot'),
+    positionen: collectItems('rechnung'),
     anzahlung: {
-      betragBrutto: parseFloat(getVal("rechnung-anzahlung-betrag")) || 0,
-      mwst: parseFloat(getVal("rechnung-anzahlung-mwst")) || 0,
-      faellig: getVal("rechnung-anzahlung-faellig"),
-      inTabelle: getVal("rechnung-anzahlung-in-tabelle") === "ja"
+      betragBrutto: parseFloat(getVal('rechnung-anzahlung-betrag') || 0),
+      mwst: parseFloat(getVal('rechnung-anzahlung-mwst') || 0),
+      faellig: getVal('rechnung-anzahlung-faellig'),
+      inTabelle: getVal('rechnung-anzahlung-in-tabelle') || 'ja'
     },
-    notizen: getVal("rechnung-notizen")
+    notizen: getVal('rechnung-notizen')
   };
 }
 
@@ -2155,31 +2313,305 @@ function saveJsonLocally(data, fileName) {
 }
 
 async function saveAngebotJsonLocally() {
-    bookingLoadAll();
-    try { await ensureOfferNumber(); } catch (err) { console.error(err); alert("Fehler bei Angebotsnummer."); return; }
-    if (!getVal('angebot-nummer').trim()) { alert("Bitte eine Angebotsnummer eingeben."); return; }
+  bookingLoadAll();
 
-    if (BOOKING.REQUIRE_FOR_OFFER) {
-        const ok = await ensureOfferReservation({reason:'save', forceCheckMessage:true});
-        if (!ok) {
-             alert("Angebot kann nicht gespeichert werden: Zeitraum ungültig/belegt oder Gültig bis fehlt.");
-             return;
+  try {
+    await ensureOfferNumber();
+  } catch (err) {
+    console.error(err);
+    alert("Fehler bei Angebotsnummer.");
+    return;
+  }
+
+  if (!getVal('angebot-nummer').trim()) {
+    alert("Bitte eine Angebotsnummer eingeben.");
+    return;
+  }
+
+  if (BOOKING.REQUIRE_FOR_OFFER) {
+    const ok = await ensureOfferReservation({ reason: 'save', forceCheckMessage: true });
+
+    if (!ok) {
+      alert("Angebot kann nicht gespeichert werden: Zeitraum ungültig/belegt oder Gültig bis fehlt.");
+      return;
+    }
+  }
+
+  const data = buildAngebotJson();
+
+  if (!data.booking && getVal('angebot-booking-id')) {
+    const startVal = getVal("angebot-booking-start");
+    const endVal = getVal("angebot-booking-end");
+    const startD = dtLocalToDate(startVal);
+    const endD = dtLocalToDate(endVal);
+
+    if (startD && endD) {
+      data.booking = {
+        resourceId: BOOKING.RESOURCE_ID,
+        startLocal: startVal,
+        endLocal: endVal,
+        startMs: startD.getTime(),
+        endMs: endD.getTime(),
+        bookingId: getVal("angebot-booking-id") || "",
+        offerValidUntilIso: getVal("angebot-gueltig") || ""
+      };
+    }
+  }
+
+  saveJsonLocally(data, data.nummer + ".json");
+
+  if (typeof sb !== "undefined" && sb) {
+    try {
+      const angebotNumber = String(data.nummer || '').trim();
+
+      const documentPayload = {
+        type: 'angebot',
+        number: angebotNumber,
+        customer_name: data.kunde ? data.kunde.name : null,
+        content: data
+      };
+
+      const { data: existingDocs, error: existingDocError } = await sb
+        .from('wm_documents')
+        .select('id')
+        .eq('type', 'angebot')
+        .eq('number', angebotNumber)
+        .limit(1);
+
+      if (existingDocError) throw existingDocError;
+
+      const existingDoc = existingDocs && existingDocs.length > 0 ? existingDocs[0] : null;
+
+      let docError = null;
+
+      if (existingDoc?.id) {
+        const { error } = await sb
+          .from('wm_documents')
+          .update(documentPayload)
+          .eq('id', existingDoc.id);
+        docError = error;
+      } else {
+        const { error } = await sb
+          .from('wm_documents')
+          .insert(documentPayload);
+        docError = error;
+      }
+
+      if (docError) {
+        console.error("Fehler beim Speichern (Supabase):", docError);
+        alert("Fehler beim Speichern in Supabase: " + docError.message);
+      } else {
+        console.log("Erfolgreich in Supabase gespeichert oder aktualisiert.");
+      }
+    } catch (e) {
+      console.error("Unerwarteter Fehler (Supabase):", e);
+      alert("Unerwarteter Supabase Fehler.");
+    }
+  }
+
+  if (typeof sb !== "undefined" && sb) {
+    try {
+      const positionen = Array.isArray(data.positionen) ? data.positionen : [];
+      const gueltigBis = data.gueltigBis || null;
+
+      let bookingId =
+        data.bookingId ||
+        data.booking?.bookingId ||
+        data.booking?.id ||
+        getVal('angebot-booking-id') ||
+        null;
+
+      if (!bookingId) {
+        const { data: existingReservations, error: reservationError } = await sb
+          .from('commercial_transactions')
+          .select('booking_id, offer_number')
+          .eq('offer_number', String(data.nummer || '').trim())
+          .limit(1);
+
+        if (reservationError) throw reservationError;
+        if (existingReservations && existingReservations.length > 0 && existingReservations[0]?.booking_id) {
+          bookingId = existingReservations[0].booking_id;
         }
-    }
-    const data = buildAngebotJson();
-    saveJsonLocally(data, data.nummer + ".json");
+      }
 
-    if (typeof sb !== "undefined" && sb) {
-        try {
-            const { error } = await sb.from('wm_documents').insert({
-                type: 'angebot',
-                number: String(data.nummer),
-                customer_name: data.kunde ? data.kunde.name : null,
-                content: data
-            });
-            if (error) { console.error("Fehler beim Speichern (Supabase):", error); alert("Fehler beim Speichern in Supabase: " + error.message); } else { console.log("Erfolgreich in Supabase gespeichert."); }
-        } catch (e) { console.error("Unerwarteter Fehler (Supabase):", e); alert("Unerwarteter Supabase Fehler."); }
+      const angebotDatum = data.datum || new Date().toISOString().split('T')[0];
+      const offerNumber = String(data.nummer || '').trim();
+
+      let brutto19 = 0;
+      let brutto7 = 0;
+      let netto19 = 0;
+      let netto7 = 0;
+      let steuer19 = 0;
+      let steuer7 = 0;
+
+      for (const pos of positionen) {
+        const menge = Number(pos.menge || 0);
+        const bruttoEinzelpreis = Number(pos.einzelpreisBrutto ?? pos.einzelpreis ?? 0);
+        const bruttoGesamt = menge * bruttoEinzelpreis;
+        const steuersatz = Number(pos.mwst ?? pos.steuersatz ?? pos.tax_rate ?? 19);
+
+        if (steuersatz === 7) {
+          brutto7 += bruttoGesamt;
+          const netto = bruttoGesamt / 1.07;
+          netto7 += netto;
+          steuer7 += bruttoGesamt - netto;
+        } else {
+          brutto19 += bruttoGesamt;
+          const netto = bruttoGesamt / 1.19;
+          netto19 += netto;
+          steuer19 += bruttoGesamt - netto;
+        }
+      }
+
+      const angebotBrutto = Number((brutto19 + brutto7).toFixed(2));
+      const angebotNetto = Number((netto19 + netto7).toFixed(2));
+      const angebotSteuer = Number((steuer19 + steuer7).toFixed(2));
+      const taxRate = brutto7 > 0 && brutto19 > 0 ? null : (brutto7 > 0 ? 7 : 19);
+
+      const paymentPayload = {
+        booking_id: bookingId,
+        customer_name: data.kunde ? data.kunde.name : null,
+        customer_email: data.kunde ? data.kunde.email : null,
+        total_amount: angebotBrutto,
+        deposit_amount: 0,
+        final_amount: 0,
+        deposit_paid: 0,
+        final_paid: 0,
+        deposit_due: null,
+        final_due: null,
+        status: 'offen',
+        invoice_number: offerNumber,
+        transaction_type: 'angebot',
+        tax_rate: taxRate,
+        tax_amount: angebotSteuer,
+        net_amount: angebotNetto,
+        cash_flow_direction: 'in',
+        note: `Angebot ${offerNumber}`,
+        offer_valid_until: gueltigBis,
+        expense_category: null,
+        total_amount_19: Number(brutto19.toFixed(2)),
+        total_amount_7: Number(brutto7.toFixed(2)),
+        tax_amount_19: Number(steuer19.toFixed(2)),
+        tax_amount_7: Number(steuer7.toFixed(2)),
+        source_document_type: 'angebot',
+        reference_number: offerNumber
+      };
+
+      const { data: existingPayment, error: existingPaymentError } = await sb
+        .from('payments')
+        .select('id')
+        .eq('invoice_number', offerNumber)
+        .eq('transaction_type', 'angebot')
+        .limit(1);
+
+      if (existingPaymentError) throw existingPaymentError;
+
+      let paymentRecordId = null;
+
+      if (existingPayment && existingPayment.length > 0) {
+        paymentRecordId = existingPayment[0].id;
+
+        const { error: updatePaymentError } = await sb
+          .from('payments')
+          .update(paymentPayload)
+          .eq('id', paymentRecordId);
+
+        if (updatePaymentError) throw updatePaymentError;
+      } else {
+        const { data: insertedPayment, error: insertPaymentError } = await sb
+          .from('payments')
+          .insert(paymentPayload)
+          .select('id')
+          .limit(1);
+
+        if (insertPaymentError) throw insertPaymentError;
+        paymentRecordId = insertedPayment && insertedPayment.length > 0 ? insertedPayment[0].id : null;
+      }
+
+      const commercialPayload = {
+        booking_id: bookingId,
+        customer_name: data.kunde ? data.kunde.name : null,
+        customer_email: data.kunde ? data.kunde.email : null,
+        offer_number: offerNumber,
+        offer_date: angebotDatum,
+        offer_valid_until: gueltigBis,
+        offer_amount_gross: angebotBrutto,
+        offer_amount_net: angebotNetto,
+        offer_tax_amount: angebotSteuer,
+        tax_rate: taxRate,
+        total_amount_19: Number(brutto19.toFixed(2)),
+        total_amount_7: Number(brutto7.toFixed(2)),
+        tax_amount_19: Number(steuer19.toFixed(2)),
+        tax_amount_7: Number(steuer7.toFixed(2)),
+        workflow_status: 'angebot_offen',
+        reservation_status: bookingId ? 'reserviert' : null,
+        notes: `Angebot ${offerNumber}`
+      };
+
+      let existingCommercial = null;
+
+      if (bookingId) {
+        const { data: byBooking, error: byBookingError } = await sb
+          .from('commercial_transactions')
+          .select('id, booking_id, offer_number, workflow_status')
+          .eq('booking_id', bookingId)
+          .limit(1);
+
+        if (byBookingError) throw byBookingError;
+        if (byBooking && byBooking.length > 0) {
+          existingCommercial = byBooking[0];
+        }
+      }
+
+      if (!existingCommercial) {
+        const { data: byOfferNumber, error: byOfferNumberError } = await sb
+          .from('commercial_transactions')
+          .select('id, booking_id, offer_number, workflow_status')
+          .eq('offer_number', offerNumber)
+          .limit(1);
+
+        if (byOfferNumberError) throw byOfferNumberError;
+        if (byOfferNumber && byOfferNumber.length > 0) {
+          existingCommercial = byOfferNumber[0];
+        }
+      }
+
+      let commercialRecordId = null;
+
+      if (existingCommercial?.id) {
+        commercialRecordId = existingCommercial.id;
+
+        const { error: updateCommercialError } = await sb
+          .from('commercial_transactions')
+          .update(commercialPayload)
+          .eq('id', commercialRecordId);
+
+        if (updateCommercialError) throw updateCommercialError;
+      } else {
+        const { data: insertedCommercial, error: insertCommercialError } = await sb
+          .from('commercial_transactions')
+          .insert(commercialPayload)
+          .select('id')
+          .limit(1);
+
+        if (insertCommercialError) throw insertCommercialError;
+        commercialRecordId = insertedCommercial && insertedCommercial.length > 0 ? insertedCommercial[0].id : null;
+      }
+
+      if (paymentRecordId && commercialRecordId) {
+        const { error: linkPaymentError } = await sb
+          .from('payments')
+          .update({ commercial_transaction_id: commercialRecordId })
+          .eq('id', paymentRecordId);
+
+        if (linkPaymentError) throw linkPaymentError;
+      }
+
+    } catch (err) {
+      console.error("Automatische Angebots-Übernahme fehlgeschlagen:", err);
+      alert("Angebot wurde gespeichert, aber die Übernahme in payment/commercial_transactions ist fehlgeschlagen: " + err.message);
     }
+  }
 }
 
 async function saveAuftragsbestaetigungJsonLocally() {
@@ -2199,12 +2631,24 @@ async function saveAuftragsbestaetigungJsonLocally() {
     return;
   }
 
-  if (data.bookingId) {
+  let bookingIdBeforeConfirm =
+    data.bookingId ||
+    data.booking?.bookingId ||
+    data.booking?.id ||
+    getVal('auftragsbestaetigung-booking-id') ||
+    null;
+
+  if (bookingIdBeforeConfirm) {
+    if (!data.bookingId) {
+      data.bookingId = bookingIdBeforeConfirm;
+    }
+    setIfExists('auftragsbestaetigung-booking-id', bookingIdBeforeConfirm);
+
     const ok = await ensureBookingConfirmedForAB({ mode: 'save' });
     if (!ok) {
       console.warn("Buchung konnte nicht auf confirmed gesetzt werden.");
     } else {
-      console.log("[DBG] booking confirmed, mail skipped", data.bookingId);
+      console.log("[DBG] booking confirmed, mail skipped", bookingIdBeforeConfirm);
     }
   }
 
@@ -2212,22 +2656,277 @@ async function saveAuftragsbestaetigungJsonLocally() {
 
   if (typeof sb !== "undefined" && sb) {
     try {
-      const { error } = await sb.from('wm_documents').insert({
+      const abNumberForDoc = String(data.nummer || '').trim();
+
+      const documentPayload = {
         type: 'auftragsbestaetigung',
-        number: String(data.nummer),
+        number: abNumberForDoc,
         customer_name: data.kunde ? data.kunde.name : null,
         content: data
-      });
+      };
 
-      if (error) {
-        console.error("Fehler beim Speichern (Supabase):", error);
-        alert("Fehler beim Speichern in Supabase: " + error.message);
+      const { data: existingDoc, error: existingDocError } = await sb
+        .from('wm_documents')
+        .select('id')
+        .eq('type', 'auftragsbestaetigung')
+        .eq('number', abNumberForDoc)
+        .maybeSingle();
+
+      if (existingDocError) throw existingDocError;
+
+      let docError = null;
+
+      if (existingDoc?.id) {
+        const { error } = await sb
+          .from('wm_documents')
+          .update(documentPayload)
+          .eq('id', existingDoc.id);
+        docError = error;
       } else {
-        console.log("Erfolgreich in Supabase gespeichert.");
+        const { error } = await sb
+          .from('wm_documents')
+          .insert(documentPayload);
+        docError = error;
+      }
+
+      if (docError) {
+        console.error("Fehler beim Speichern (Supabase):", docError);
+        alert("Fehler beim Speichern in Supabase: " + docError.message);
+      } else {
+        console.log("Erfolgreich in Supabase gespeichert oder aktualisiert.");
       }
     } catch (e) {
       console.error("Unerwarteter Fehler (Supabase):", e);
       alert("Unerwarteter Supabase Fehler.");
+    }
+  }
+
+  if (typeof sb !== "undefined" && sb) {
+    try {
+      const positionen = Array.isArray(data.positionen) ? data.positionen : [];
+      let bookingId =
+        data.bookingId ||
+        data.booking?.bookingId ||
+        data.booking?.id ||
+        getVal('auftragsbestaetigung-booking-id') ||
+        null;
+
+      const abDatum = data.datum || new Date().toISOString().split('T')[0];
+      const abNumber = String(data.nummer || '').trim();
+      const anzahlungBrutto = Number(data?.anzahlung?.betragBrutto || 0);
+      const anzahlungFaellig = data?.anzahlung?.faellig || null;
+      const referenzAngebot = data.referenzAngebot || data.angebotNummer || null;
+
+      if (!bookingId && referenzAngebot) {
+        const angebotRef = String(referenzAngebot).trim();
+
+        const { data: angebotCommercial, error: angebotCommercialError } = await sb
+          .from('commercial_transactions')
+          .select('booking_id, offer_number')
+          .eq('offer_number', angebotRef)
+          .maybeSingle();
+
+        if (angebotCommercialError) throw angebotCommercialError;
+        if (angebotCommercial?.booking_id) {
+          bookingId = angebotCommercial.booking_id;
+        }
+      }
+
+      if (!bookingId && referenzAngebot) {
+        const angebotRef = String(referenzAngebot).trim();
+
+        const { data: angebotPayment, error: angebotPaymentError } = await sb
+          .from('payments')
+          .select('booking_id, invoice_number, transaction_type')
+          .eq('invoice_number', angebotRef)
+          .eq('transaction_type', 'angebot')
+          .maybeSingle();
+
+        if (angebotPaymentError) throw angebotPaymentError;
+        if (angebotPayment?.booking_id) {
+          bookingId = angebotPayment.booking_id;
+        }
+      }
+
+      if (bookingId && !data.bookingId) {
+        data.bookingId = bookingId;
+      }
+
+      let brutto19 = 0;
+      let brutto7 = 0;
+      let netto19 = 0;
+      let netto7 = 0;
+      let steuer19 = 0;
+      let steuer7 = 0;
+
+      for (const pos of positionen) {
+        const menge = Number(pos.menge || 0);
+        const bruttoEinzelpreis = Number(pos.einzelpreisBrutto ?? pos.einzelpreis ?? 0);
+        const bruttoGesamt = menge * bruttoEinzelpreis;
+        const steuersatz = Number(pos.mwst ?? pos.steuersatz ?? pos.tax_rate ?? 19);
+
+        if (steuersatz === 7) {
+          brutto7 += bruttoGesamt;
+          const netto = bruttoGesamt / 1.07;
+          netto7 += netto;
+          steuer7 += bruttoGesamt - netto;
+        } else {
+          brutto19 += bruttoGesamt;
+          const netto = bruttoGesamt / 1.19;
+          netto19 += netto;
+          steuer19 += bruttoGesamt - netto;
+        }
+      }
+
+      const gesamtBrutto = Number((brutto19 + brutto7).toFixed(2));
+      const gesamtNetto = Number((netto19 + netto7).toFixed(2));
+      const gesamtSteuer = Number((steuer19 + steuer7).toFixed(2));
+      const restBrutto = Number(Math.max(0, gesamtBrutto - anzahlungBrutto).toFixed(2));
+      const taxRate = brutto7 > 0 && brutto19 > 0 ? null : (brutto7 > 0 ? 7 : 19);
+
+      const paymentPayload = {
+        booking_id: bookingId,
+        customer_name: data.kunde ? data.kunde.name : null,
+        customer_email: data.kunde ? data.kunde.email : null,
+        total_amount: gesamtBrutto,
+        deposit_amount: Number(anzahlungBrutto.toFixed(2)),
+        final_amount: restBrutto,
+        deposit_paid: 0,
+        final_paid: 0,
+        deposit_due: anzahlungFaellig,
+        final_due: null,
+        status: "offen",
+        invoice_number: abNumber,
+        transaction_type: "auftragsbestaetigung",
+        tax_rate: taxRate,
+        tax_amount: gesamtSteuer,
+        net_amount: gesamtNetto,
+        cash_flow_direction: "in",
+        note: `Auftragsbestätigung ${abNumber}${referenzAngebot ? ` | Referenz Angebot ${referenzAngebot}` : ''}`,
+        expense_category: null,
+        total_amount_19: Number(brutto19.toFixed(2)),
+        total_amount_7: Number(brutto7.toFixed(2)),
+        tax_amount_19: Number(steuer19.toFixed(2)),
+        tax_amount_7: Number(steuer7.toFixed(2)),
+        source_document_type: "auftragsbestaetigung",
+        reference_number: abNumber
+      };
+
+      const { data: existingPayment, error: existingPaymentError } = await sb
+        .from('payments')
+        .select('id')
+        .eq('invoice_number', abNumber)
+        .eq('transaction_type', 'auftragsbestaetigung')
+        .limit(1);
+
+      if (existingPaymentError) throw existingPaymentError;
+
+      let paymentRecordId = null;
+
+      if (existingPayment && existingPayment.length > 0) {
+        paymentRecordId = existingPayment[0].id;
+
+        const { error: updatePaymentError } = await sb
+          .from('payments')
+          .update(paymentPayload)
+          .eq('id', paymentRecordId);
+
+        if (updatePaymentError) throw updatePaymentError;
+      } else {
+        const { data: insertedPayment, error: insertPaymentError } = await sb
+          .from('payments')
+          .insert(paymentPayload)
+          .select('id')
+          .limit(1);
+
+        if (insertPaymentError) throw insertPaymentError;
+        paymentRecordId = insertedPayment && insertedPayment.length > 0 ? insertedPayment[0].id : null;
+      }
+
+      const commercialPayload = {
+        booking_id: bookingId,
+        customer_name: data.kunde ? data.kunde.name : null,
+        customer_email: data.kunde ? data.kunde.email : null,
+        offer_number: referenzAngebot ? String(referenzAngebot).trim() : null,
+        ab_number: abNumber,
+        ab_date: abDatum,
+        ab_amount_gross: gesamtBrutto,
+        ab_amount_net: gesamtNetto,
+        ab_tax_amount: gesamtSteuer,
+        deposit_amount: Number(anzahlungBrutto.toFixed(2)),
+        deposit_due: anzahlungFaellig,
+        tax_rate: taxRate,
+        total_amount_19: Number(brutto19.toFixed(2)),
+        total_amount_7: Number(brutto7.toFixed(2)),
+        tax_amount_19: Number(steuer19.toFixed(2)),
+        tax_amount_7: Number(steuer7.toFixed(2)),
+        workflow_status: "ab_bestaetigt",
+        reservation_status: bookingId ? "bestaetigt" : null,
+        notes: `Auftragsbestätigung ${abNumber}${referenzAngebot ? ` | Referenz Angebot ${referenzAngebot}` : ''}`
+      };
+
+      let existingCommercial = null;
+
+      if (bookingId) {
+        const { data: byBooking, error: byBookingError } = await sb
+          .from('commercial_transactions')
+          .select('id, booking_id, ab_number, workflow_status')
+          .eq('booking_id', bookingId)
+          .limit(1);
+
+        if (byBookingError) throw byBookingError;
+        if (byBooking && byBooking.length > 0) {
+          existingCommercial = byBooking[0];
+        }
+      }
+
+      if (!existingCommercial) {
+        const { data: byAbNumber, error: byAbNumberError } = await sb
+          .from('commercial_transactions')
+          .select('id, booking_id, ab_number, workflow_status')
+          .eq('ab_number', abNumber)
+          .limit(1);
+
+        if (byAbNumberError) throw byAbNumberError;
+        if (byAbNumber && byAbNumber.length > 0) {
+          existingCommercial = byAbNumber[0];
+        }
+      }
+
+      let commercialRecordId = null;
+
+      if (existingCommercial?.id) {
+        commercialRecordId = existingCommercial.id;
+
+        const { error: updateCommercialError } = await sb
+          .from('commercial_transactions')
+          .update(commercialPayload)
+          .eq('id', commercialRecordId);
+
+        if (updateCommercialError) throw updateCommercialError;
+      } else {
+        const { data: insertedCommercial, error: insertCommercialError } = await sb
+          .from('commercial_transactions')
+          .insert(commercialPayload)
+          .select('id')
+          .limit(1);
+
+        if (insertCommercialError) throw insertCommercialError;
+        commercialRecordId = insertedCommercial && insertedCommercial.length > 0 ? insertedCommercial[0].id : null;
+      }
+
+      if (paymentRecordId && commercialRecordId) {
+        const { error: linkPaymentError } = await sb
+          .from('payments')
+          .update({ commercial_transaction_id: commercialRecordId })
+          .eq('id', paymentRecordId);
+
+        if (linkPaymentError) throw linkPaymentError;
+      }
+
+    } catch (err) {
+      console.error("Automatische AB-Übernahme fehlgeschlagen:", err);
+      alert("AB wurde gespeichert, aber die Übernahme in payment/commercial_transactions ist fehlgeschlagen: " + err.message);
     }
   }
 }
@@ -2283,28 +2982,479 @@ async function sendAuftragsbestaetigungMail() {
 }
 
 async function saveRechnungJsonLocally() {
-    try { await ensureInvoiceNumber(); } catch (err) { console.error(err); alert("Fehler bei Rechnungsnummer."); return; }
-    const data = buildRechnungJson();
-    if (!data.nummer) { alert("Bitte eine Rechnungsnummer eingeben."); return; }
+  try {
+    await ensureInvoiceNumber();
+  } catch (err) {
+    console.error(err);
+    alert("Fehler bei Rechnungsnummer.");
+    return;
+  }
 
-    saveJsonLocally(data, data.nummer + ".json");
+  const data = buildRechnungJson();
+  if (!data.nummer) {
+    alert("Bitte eine Rechnungsnummer eingeben.");
+    return;
+  }
 
-    if (typeof sb !== "undefined" && sb) {
-        try {
-            const { error } = await sb.from('wm_documents').insert({
-                type: 'rechnung',
-                number: String(data.nummer),
-                customer_name: data.kunde ? data.kunde.name : null,
-                content: data
-            });
-            if (error) { console.error("Fehler beim Speichern (Supabase):", error); alert("Fehler beim Speichern in Supabase: " + error.message); } else { console.log("Erfolgreich in Supabase gespeichert."); }
-        } catch (e) { console.error("Unerwarteter Fehler (Supabase):", e); alert("Unerwarteter Supabase Fehler."); }
+  saveJsonLocally(data, data.nummer + ".json");
+
+  if (typeof sb !== "undefined" && sb) {
+    try {
+      const rechnungNumber = String(data.nummer).trim();
+      const documentPayload = {
+        type: 'rechnung',
+        number: rechnungNumber,
+        customer_name: data.kunde ? data.kunde.name : null,
+        content: data
+      };
+
+      // 1. Prüfen, ob die Rechnung schon existiert
+      const { data: existingDoc, error: existingDocError } = await sb
+        .from('wm_documents')
+        .select('id')
+        .eq('type', 'rechnung')
+        .eq('number', rechnungNumber)
+        .maybeSingle();
+
+      if (existingDocError) throw existingDocError;
+
+      let docError = null;
+
+      // 2. Entweder updaten oder neu einfügen
+      if (existingDoc && existingDoc.id) {
+        const { error } = await sb
+          .from('wm_documents')
+          .update(documentPayload)
+          .eq('id', existingDoc.id);
+        docError = error;
+      } else {
+        const { error } = await sb
+          .from('wm_documents')
+          .insert(documentPayload);
+        docError = error;
+      }
+
+      if (docError) {
+        console.error("Fehler beim Speichern (Supabase):", docError);
+        alert("Fehler beim Speichern in Supabase: " + docError.message);
+      } else {
+        console.log("Erfolgreich in Supabase gespeichert oder aktualisiert.");
+      }
+    } catch (e) {
+      console.error("Unerwarteter Fehler (Supabase):", e);
+      alert("Unerwarteter Supabase Fehler.");
     }
 }
 
+  if (typeof sb !== "undefined" && sb) {
+    try {
+      const positionen = Array.isArray(data.positionen) ? data.positionen : [];
+      let bookingId = data.bookingId || getVal('rechnung-booking-id') || null;
+const invoiceNumber = String(data.nummer || '').trim();
+const rechnungsDatum = data.datum || new Date().toISOString().split('T')[0];
+const rechnungsFaellig = data.faelligAm || data.zahlbarBis || data.faellig || null;
+const referenzAB = data.referenzAuftragsbestaetigung || data.abNummer || null;
+const referenzAngebot = data.referenzAngebot || data.angebotNummer || getVal('rechnung-referenz-angebot') || null;
+
+let brutto19 = 0;
+let brutto7 = 0;
+let netto19 = 0;
+let netto7 = 0;
+let steuer19 = 0;
+let steuer7 = 0;
+
+for (const pos of positionen) {
+  const menge = Number(pos.menge || 0);
+  const bruttoEinzelpreis = Number(pos.einzelpreisBrutto ?? pos.einzelpreis ?? 0);
+  const bruttoGesamt = menge * bruttoEinzelpreis;
+  const steuersatz = Number(pos.mwst ?? pos.steuersatz ?? pos.tax_rate ?? 19);
+
+  if (steuersatz === 7) {
+    brutto7 += bruttoGesamt;
+    const netto = bruttoGesamt / 1.07;
+    netto7 += netto;
+    steuer7 += bruttoGesamt - netto;
+  } else {
+    brutto19 += bruttoGesamt;
+    const netto = bruttoGesamt / 1.19;
+    netto19 += netto;
+    steuer19 += bruttoGesamt - netto;
+  }
+}
+
+const gesamtBrutto = Number((brutto19 + brutto7).toFixed(2));
+const gesamtNetto = Number((netto19 + netto7).toFixed(2));
+const gesamtSteuer = Number((steuer19 + steuer7).toFixed(2));
+const taxRate = brutto7 > 0 && brutto19 > 0 ? null : (brutto7 > 0 ? 7 : 19);
+
+let vorhandeneAnzahlung = 0;
+let vorhandeneAnzahlungBezahlt = 0;
+let existingAB = null;
+
+if (bookingId) {
+  const { data: byBooking, error: existingABError } = await sb
+    .from('payments')
+    .select('deposit_amount, deposit_paid, invoice_number, booking_id, source_document_type, reference_number')
+    .eq('booking_id', bookingId)
+    .eq('source_document_type', 'auftragsbestaetigung')
+    .maybeSingle();
+
+  if (existingABError) throw existingABError;
+  existingAB = byBooking;
+}
+
+if (!existingAB && referenzAB) {
+  const { data: byRef, error: existingABByRefError } = await sb
+    .from('payments')
+    .select('deposit_amount, deposit_paid, invoice_number, booking_id, source_document_type, reference_number')
+    .eq('invoice_number', String(referenzAB).trim())
+    .eq('source_document_type', 'auftragsbestaetigung')
+    .maybeSingle();
+
+  if (existingABByRefError) throw existingABByRefError;
+  existingAB = byRef;
+}
+
+if (!bookingId && existingAB?.booking_id) {
+  bookingId = existingAB.booking_id;
+}
+
+      vorhandeneAnzahlung = Number(existingAB?.deposit_amount || 0);
+      vorhandeneAnzahlungBezahlt = Number(existingAB?.deposit_paid || 0);
+
+      const restbetrag = Number(Math.max(0, gesamtBrutto - vorhandeneAnzahlung).toFixed(2));
+
+      const paymentPayload = {
+        booking_id: bookingId,
+        customer_name: data.kunde ? data.kunde.name : null,
+        customer_email: data.kunde ? data.kunde.email : null,
+        total_amount: gesamtBrutto,
+        deposit_amount: Number(vorhandeneAnzahlung.toFixed(2)),
+        final_amount: restbetrag,
+        deposit_paid: Number(vorhandeneAnzahlungBezahlt.toFixed(2)),
+        final_paid: 0,
+        deposit_due: null,
+        final_due: rechnungsFaellig,
+        status: vorhandeneAnzahlungBezahlt > 0 ? 'teilbezahlt' : 'offen',
+        invoice_number: invoiceNumber,
+        transaction_type: 'rechnung',
+        tax_rate: taxRate,
+        tax_amount: gesamtSteuer,
+        net_amount: gesamtNetto,
+        cash_flow_direction: 'in',
+        note: `Rechnung ${invoiceNumber}${referenzAB ? ` | Referenz AB ${referenzAB}` : ''}`,
+        total_amount_19: Number(brutto19.toFixed(2)),
+        total_amount_7: Number(brutto7.toFixed(2)),
+        tax_amount_19: Number(steuer19.toFixed(2)),
+        tax_amount_7: Number(steuer7.toFixed(2)),
+        source_document_type: 'rechnung',
+        reference_number: referenzAB ? String(referenzAB).trim() : null
+      };
+
+            // 1. Payment Eintrag updaten oder erstellen (und ID merken)
+      const { data: existingPayment, error: existingPaymentError } = await sb.from('payments')
+        .select('id')
+        .eq('invoice_number', invoiceNumber)
+        .eq('transaction_type', 'rechnung')
+        .limit(1);
+
+      if (existingPaymentError) throw existingPaymentError;
+
+      let paymentRecordId = null;
+
+      if (existingPayment && existingPayment.length > 0) {
+        paymentRecordId = existingPayment[0].id;
+        const { error: updatePaymentError } = await sb
+          .from('payments')
+          .update(paymentPayload)
+          .eq('id', paymentRecordId);
+        if (updatePaymentError) throw updatePaymentError;
+      } else {
+        const { data: insertedPayment, error: insertPaymentError } = await sb
+          .from('payments')
+          .insert(paymentPayload)
+          .select('id')
+          .limit(1);
+        if (insertPaymentError) throw insertPaymentError;
+        paymentRecordId = insertedPayment && insertedPayment.length > 0 ? insertedPayment[0].id : null;
+      }
+
+      const commercialPayload = {
+        booking_id: bookingId,
+        customer_name: data.kunde ? data.kunde.name : null,
+        customer_email: data.kunde ? data.kunde.email : null,
+        offer_number: referenzAngebot ? String(referenzAngebot).trim() : null,
+        ab_number: referenzAB ? String(referenzAB).trim() : null,
+        invoice_number: invoiceNumber,
+        invoice_date: rechnungsDatum,
+        invoice_due: rechnungsFaellig,
+        invoice_amount_gross: gesamtBrutto,
+        invoice_amount_net: gesamtNetto,
+        invoice_tax_amount: gesamtSteuer,
+        deposit_amount: Number(vorhandeneAnzahlung.toFixed(2)),
+        final_amount: restbetrag,
+        tax_rate: taxRate,
+        total_amount_19: Number(brutto19.toFixed(2)),
+        total_amount_7: Number(brutto7.toFixed(2)),
+        tax_amount_19: Number(steuer19.toFixed(2)),
+        tax_amount_7: Number(steuer7.toFixed(2)),
+        workflow_status: vorhandeneAnzahlungBezahlt > 0 ? "teilbezahlt" : "rechnung_gestellt",
+        reservation_status: "bestaetigt",
+        notes: `Rechnung ${invoiceNumber}${referenzAB ? ` | Referenz AB ${referenzAB}` : ''}${referenzAngebot ? ` | Referenz Angebot ${referenzAngebot}` : ''}`
+      };
+
+      // 2. Commercial Transaction Eintrag updaten oder erstellen (und ID merken)
+      const { data: existingCommercial, error: existingCommercialError } = await sb.from('commercial_transactions')
+        .select('id')
+        .eq('invoice_number', invoiceNumber)
+        .limit(1);
+
+      if (existingCommercialError) throw existingCommercialError;
+
+      let commercialRecordId = null;
+
+      if (existingCommercial && existingCommercial.length > 0) {
+        commercialRecordId = existingCommercial[0].id;
+        const { error: updateCommercialError } = await sb
+          .from('commercial_transactions')
+          .update(commercialPayload)
+          .eq('id', commercialRecordId);
+        if (updateCommercialError) throw updateCommercialError;
+      } else {
+        const { data: insertedCommercial, error: insertCommercialError } = await sb
+          .from('commercial_transactions')
+          .insert(commercialPayload)
+          .select('id')
+          .limit(1);
+        if (insertCommercialError) throw insertCommercialError;
+        commercialRecordId = insertedCommercial && insertedCommercial.length > 0 ? insertedCommercial[0].id : null;
+      }
+
+      // 3. Payment Eintrag mit der Commercial Transaction verknüpfen
+      if (paymentRecordId && commercialRecordId) {
+        const { error: linkPaymentError } = await sb
+          .from('payments')
+          .update({ commercial_transaction_id: commercialRecordId })
+          .eq('id', paymentRecordId);
+        if (linkPaymentError) throw linkPaymentError;
+      }
+
+    } catch (err) {
+      console.error("Automatische Rechnungs-Übernahme fehlgeschlagen:", err);
+      alert("Rechnung wurde gespeichert, aber die Übernahme in payment/commercial_transactions ist fehlgeschlagen: " + err.message);
+    }
+  }
+}
+   
 /** =========================
  *  LOAD JSON
  *  ========================= */
+function loadAngebotJsonForAngebot(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  const r = new FileReader();
+  r.onload = function() {
+    try {
+      const angebot = JSON.parse(r.result);
+      
+      setIfExists('angebot-nummer', angebot.nummer || '');
+      setIfExists('angebot-datum', angebot.datum || '');
+      setIfExists('angebot-leistung', angebot.leistungsdatum || '');
+      setIfExists('angebot-gueltig', angebot.gueltigBis || '');
+      
+      if (angebot.kunde) {
+        setIfExists('angebot-kunde-name', angebot.kunde.name || '');
+        setIfExists('angebot-kunde-adresse', angebot.kunde.adresse || '');
+        setIfExists('angebot-kunde-plz', angebot.kunde.plz || '');
+        setIfExists('angebot-kunde-ort', angebot.kunde.ort || '');
+        setIfExists('angebot-kunde-email', angebot.kunde.email || '');
+      }
+
+      setIfExists('angebot-notizen', angebot.notizen || '');
+      setIfExists('angebot-booking-id', angebot.bookingId || '');
+
+      if (angebot.booking) {
+        setIfExists('angebot-booking-start', angebot.booking.startLocal || '');
+        setIfExists('angebot-booking-end', angebot.booking.endLocal || '');
+        if (angebot.booking.bookingId || angebot.booking.id) {
+            setIfExists('angebot-booking-id', angebot.booking.bookingId || angebot.booking.id);
+        }
+      }
+
+      const itemsContainer = document.getElementById('angebot-items');
+      if (itemsContainer) {
+        itemsContainer.innerHTML = '';
+        itemCounters['angebot'] = 0;
+        
+        if (Array.isArray(angebot.positionen) && angebot.positionen.length > 0) {
+          angebot.positionen.forEach(pos => {
+            addItem('angebot');
+            const id = itemCounters['angebot'] - 1;
+            setIfExists(`angebot-desc-${id}`, pos.beschreibung || '');
+            setIfExists(`angebot-qty-${id}`, pos.menge !== null ? pos.menge : 1);
+            setIfExists(`angebot-price-${id}`, pos.einzelpreisBrutto !== null ? pos.einzelpreisBrutto : 0);
+            setIfExists(`angebot-tax-${id}`, pos.mwst !== null ? pos.mwst : 19);
+          });
+        } else {
+          addItem('angebot');
+        }
+      }
+      
+      if (typeof updateOfferBookingCheck === "function") {
+         updateOfferBookingCheck(false);
+      }
+      
+      alert("Angebot erfolgreich geladen! Du kannst es jetzt neu speichern.");
+    } catch (e) {
+      console.error("Fehler beim Parsen der Angebots-JSON:", e);
+      alert("Ungültige Angebots-JSON-Datei.");
+    }
+  };
+  r.readAsText(file, "utf-8");
+  event.target.value = "";
+}
+
+function loadAuftragsbestaetigungJsonForAB(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  const r = new FileReader();
+  r.onload = function() {
+    try {
+      const ab = JSON.parse(r.result);
+      
+      setIfExists('auftragsbestaetigung-nummer', ab.nummer || '');
+      setIfExists('auftragsbestaetigung-datum', ab.datum || '');
+      setIfExists('auftragsbestaetigung-leistung', ab.leistungsdatum || '');
+      setIfExists('auftragsbestaetigung-referenz-angebot', ab.referenzAngebot || '');
+      
+      if (ab.kunde) {
+        setIfExists('auftragsbestaetigung-kunde-name', ab.kunde.name || '');
+        setIfExists('auftragsbestaetigung-kunde-adresse', ab.kunde.adresse || '');
+        setIfExists('auftragsbestaetigung-kunde-plz', ab.kunde.plz || '');
+        setIfExists('auftragsbestaetigung-kunde-ort', ab.kunde.ort || '');
+        setIfExists('auftragsbestaetigung-kunde-email', ab.kunde.email || '');
+      }
+
+      setIfExists('auftragsbestaetigung-booking-id', ab.bookingId || '');
+      
+      if (ab.booking) {
+        if (ab.booking.bookingId || ab.booking.id) {
+            setIfExists('auftragsbestaetigung-booking-id', ab.booking.bookingId || ab.booking.id);
+        }
+      }
+
+      setIfExists('auftragsbestaetigung-notizen', ab.notizen || '');
+
+      if (ab.anzahlung) {
+        setIfExists('auftragsbestaetigung-anzahlung-betrag', ab.anzahlung.betragBrutto || 0);
+        setIfExists('auftragsbestaetigung-anzahlung-mwst', ab.anzahlung.mwst || 19);
+        setIfExists('auftragsbestaetigung-anzahlung-faellig', ab.anzahlung.faellig || '');
+      }
+
+      const itemsContainer = document.getElementById('auftragsbestaetigung-items');
+      if (itemsContainer) {
+        itemsContainer.innerHTML = ''; 
+        itemCounters['auftragsbestaetigung'] = 0;
+        
+        if (Array.isArray(ab.positionen) && ab.positionen.length > 0) {
+          ab.positionen.forEach(pos => {
+            addItem('auftragsbestaetigung');
+            const id = itemCounters['auftragsbestaetigung'] - 1;
+            setIfExists(`auftragsbestaetigung-desc-${id}`, pos.beschreibung || '');
+            setIfExists(`auftragsbestaetigung-qty-${id}`, pos.menge !== null ? pos.menge : 1);
+            setIfExists(`auftragsbestaetigung-price-${id}`, pos.einzelpreisBrutto !== null ? pos.einzelpreisBrutto : 0);
+            setIfExists(`auftragsbestaetigung-tax-${id}`, pos.mwst !== null ? pos.mwst : 19);
+          });
+        } else {
+          addItem('auftragsbestaetigung');
+        }
+      }
+      
+      alert("Auftragsbestätigung erfolgreich geladen! Du kannst sie jetzt neu speichern.");
+    } catch (e) {
+      console.error("Fehler beim Parsen der AB-JSON:", e);
+      alert("Ungültige Auftragsbestätigungs-JSON-Datei.");
+    }
+  };
+  r.readAsText(file, "utf-8");
+  event.target.value = "";
+}
+
+function loadRechnungJsonForRechnung(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  const r = new FileReader();
+  r.onload = function() {
+    try {
+      const re = JSON.parse(r.result);
+      
+      setIfExists('rechnung-nummer', re.nummer || '');
+      setIfExists('rechnung-datum', re.datum || '');
+      setIfExists('rechnung-leistung', re.leistungsdatum || '');
+      setIfExists('rechnung-faellig', re.faellig || re.faelligAm || '');
+      setIfExists('rechnung-referenz-ab', re.referenzAuftragsbestaetigung || '');
+      setIfExists('rechnung-referenz-angebot', re.referenzAngebot || '');
+      
+      if (re.kunde) {
+        setIfExists('rechnung-kunde-name', re.kunde.name || '');
+        setIfExists('rechnung-kunde-adresse', re.kunde.adresse || '');
+        setIfExists('rechnung-kunde-plz', re.kunde.plz || '');
+        setIfExists('rechnung-kunde-ort', re.kunde.ort || '');
+        setIfExists('rechnung-kunde-email', re.kunde.email || '');
+      }
+
+      setIfExists('rechnung-booking-id', re.bookingId || '');
+      
+      if (re.booking) {
+        if (re.booking.bookingId || re.booking.id) {
+            setIfExists('rechnung-booking-id', re.booking.bookingId || re.booking.id);
+        }
+      }
+
+      setIfExists('rechnung-notizen', re.notizen || '');
+
+      if (re.anzahlung) {
+        setIfExists('rechnung-anzahlung-betrag', re.anzahlung.betragBrutto || 0);
+        setIfExists('rechnung-anzahlung-mwst', re.anzahlung.mwst || 19);
+        setIfExists('rechnung-anzahlung-faellig', re.anzahlung.faellig || '');
+        if (re.anzahlung.inTabelle) {
+          setIfExists('rechnung-anzahlung-in-tabelle', re.anzahlung.inTabelle);
+        }
+      }
+
+      const itemsContainer = document.getElementById('rechnung-items');
+      if (itemsContainer) {
+        itemsContainer.innerHTML = '';
+        itemCounters['rechnung'] = 0;
+        
+        if (Array.isArray(re.positionen) && re.positionen.length > 0) {
+          re.positionen.forEach(pos => {
+            addItem('rechnung');
+            const id = itemCounters['rechnung'] - 1;
+            setIfExists(`rechnung-desc-${id}`, pos.beschreibung || '');
+            setIfExists(`rechnung-qty-${id}`, pos.menge !== null ? pos.menge : 1);
+            setIfExists(`rechnung-price-${id}`, pos.einzelpreisBrutto !== null ? pos.einzelpreisBrutto : 0);
+            setIfExists(`rechnung-tax-${id}`, pos.mwst !== null ? pos.mwst : 19);
+          });
+        } else {
+          addItem('rechnung');
+        }
+      }
+      
+      alert("Rechnung erfolgreich geladen! Du kannst sie jetzt speichern, um Supabase zu aktualisieren.");
+    } catch (e) {
+      console.error("Fehler beim Parsen der Rechnungs-JSON:", e);
+      alert("Ungültige Rechnungs-JSON-Datei.");
+    }
+  };
+  r.readAsText(file, "utf-8");
+  event.target.value = "";
+}
+
+
 function loadAngebotJsonForAuftragsbestaetigung(event) {
   const file = event.target.files && event.target.files[0];
   if (!file) return;
@@ -2386,7 +3536,9 @@ function loadAuftragsbestaetigungJsonForRechnung(event) {
 }
 
 function fuelleRechnungAusAuftragsbestaetigung(ab) {
-  if (!ab || !ab.kunde) { alert("AB-Daten unvollständig."); return; }
+  if (ab.bookingId) {
+  setIfExists('rechnung-booking-id', ab.bookingId);
+}
 
   setIfExists("rechnung-kunde-name", ab.kunde.name || "");
   setIfExists("rechnung-kunde-adresse", ab.kunde.adresse || "");
@@ -2413,7 +3565,7 @@ function fuelleRechnungAusAuftragsbestaetigung(ab) {
     });
   } else {
     addItem("rechnung");
-  }
+  
 
   const anz = ab.anzahlung || {};
   setIfExists("rechnung-anzahlung-betrag", (anz.betragBrutto != null ? anz.betragBrutto : 0));
@@ -2421,6 +3573,7 @@ function fuelleRechnungAusAuftragsbestaetigung(ab) {
   setIfExists("rechnung-anzahlung-faellig", anz.faellig || "");
 
   setIfExists("rechnung-notizen", defaultTextRechnung());
+}
 }
 
 /** =========================
@@ -3748,14 +4901,23 @@ function bookingEditAction(id) {
     return; 
   }
 
-  document.getElementById('booking-customer').value = b.customer || '';
-            if (document.getElementById('booking-email')) document.getElementById('booking-email').value = b.email || '';
-  document.getElementById('booking-ref').value = b.ref || '';
-  document.getElementById('booking-note').value = b.note || '';
-  document.getElementById('booking-start').value = toDT(b.startMs);
-  document.getElementById('booking-end').value = toDT(b.endMs);
-  document.getElementById('booking-valid-until').value = b.offerValidUntilIso || '';
-  document.getElementById('booking-edit-id').value = String(b.id);
+  const customerEl = document.getElementById('booking-customer');
+const emailEl = document.getElementById('booking-email');
+const refEl = document.getElementById('booking-ref');
+const noteEl = document.getElementById('booking-note');
+const startEl = document.getElementById('booking-start');
+const endEl = document.getElementById('booking-end');
+const validUntilEl = document.getElementById('booking-valid-until');
+const editIdEl = document.getElementById('booking-edit-id');
+
+if (customerEl) customerEl.value = b.customer || '';
+if (emailEl) emailEl.value = b.email || '';
+if (refEl) refEl.value = b.ref || '';
+if (noteEl) noteEl.value = b.note || '';
+if (startEl) startEl.value = toDT(b.startMs);
+if (endEl) endEl.value = toDT(b.endMs);
+if (validUntilEl) validUntilEl.value = b.offerValidUntilIso || '';
+if (editIdEl) editIdEl.value = String(b.id || '');
 
   const msgEl = document.getElementById('booking-msg');
   if (msgEl) {
