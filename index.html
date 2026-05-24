@@ -14,11 +14,17 @@ window.addEventListener('load', async () => {
     setIfExists("angebot-datum", today);ƒ
     setIfExists("auftragsbestaetigung-datum", today);
     setIfExists("rechnung-datum", today);
+  setIfExists("gutschrift-datum", today);
+    setIfExists("gutschrift-datum", today);
     setTextareaIfEmpty("angebot-notizen", defaultTextAngebot());
     setTextareaIfEmpty("auftragsbestaetigung-notizen", defaultTextAuftragsbestaetigung());
     setTextareaIfEmpty("rechnung-notizen", defaultTextRechnung());
+  setTextareaIfEmpty("gutschrift-notizen", defaultTextGutschrift());
+    setTextareaIfEmpty("gutschrift-notizen", defaultTextGutschrift());
     addItem("angebot");
     addItem("rechnung");
+  addItem("gutschrift");
+    addItem("gutschrift");
     if (typeof bookingRefreshUI === 'function') bookingRefreshUI();
     updateOfferBookingCheck(false);
 
@@ -122,6 +128,17 @@ function switchTab(a, b) {
     .header h1 { font-size: 2.5em; margin-bottom: 10px; }
 
     .tabs { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+
+.tab[onclick*='auftragsbestaetigung-panel'] {
+  padding: 14px 18px;
+  min-height: 64px;
+  line-height: 1.15;
+  white-space: normal;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 
     .tab {
       flex: 1;
@@ -463,6 +480,7 @@ function switchTab(a, b) {
   <div class="tab active" onclick="switchTab(this, 'angebot-panel')">Angebot erstellen</div>
   <div class="tab" onclick="switchTab(this, 'auftragsbestaetigung-panel')">Auftragsbestätigung erstellen</div>
   <div class="tab" onclick="switchTab(this, 'rechnung-panel')">Rechnung erstellen</div>
+  <div class="tab" onclick="switchTab(this, 'gutschrift-panel')">Gutschrift erstellen</div>
   <div class="tab" onclick="switchTab(this, 'buchungen-panel')">Buchungen</div>
   <div class="tab" onclick="switchTab(this, 'kalender-panel')">Kalender</div>
 </div>
@@ -840,6 +858,166 @@ function switchTab(a, b) {
     </div>
 
     <div id="rechnung-preview" class="preview"></div>
+  </div>
+
+
+
+  <!-- Gutschrift -->
+  <div id="gutschrift-panel" class="document-panel">
+    <div class="form-section">
+      <h2>Rechnung für Gutschrift laden</h2>
+      <div class="form-group">
+        <label for="gutschrift-json-file-gutschrift">Rechnungs-JSON auswählen</label>
+        <input type="file" id="gutschrift-json-file-gutschrift" accept="application/json" onchange="loadRechnungJsonForGutschrift(event)">
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h2>Kundeninformationen</h2>
+      <div class="form-group">
+        <label for="gutschrift-kunde-name">Name / Firma *</label>
+        <input type="text" id="gutschrift-kunde-name">
+      </div>
+      <div class="form-group">
+        <label for="gutschrift-kunde-email">E-Mail</label>
+        <input type="email" id="gutschrift-kunde-email" placeholder="name@beispiel.de">
+      </div>
+      <div class="form-group">
+        <label for="gutschrift-kunde-adresse">Adresse *</label>
+        <input type="text" id="gutschrift-kunde-adresse">
+      </div>
+      <div class="row">
+        <div class="form-group">
+          <label for="gutschrift-kunde-plz">PLZ *</label>
+          <input type="text" id="gutschrift-kunde-plz">
+        </div>
+        <div class="form-group">
+          <label for="gutschrift-kunde-ort">Ort *</label>
+          <input type="text" id="gutschrift-kunde-ort">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h2>Gutschriftsinformationen</h2>
+      <div class="row">
+        <div class="form-group">
+          <label for="gutschrift-nummer">Gutschriftsnummer *</label>
+          <input type="text" id="gutschrift-nummer" placeholder="GS-2026-001">
+        </div>
+        <div class="form-group">
+          <label for="gutschrift-datum">Gutschriftsdatum *</label>
+          <input type="date" id="gutschrift-datum">
+        </div>
+      </div>
+      <div class="row">
+        <div class="form-group">
+          <label for="gutschrift-leistung">Leistungsdatum</label>
+          <input type="date" id="gutschrift-leistung">
+        </div>
+        <div class="form-group">
+          <label for="gutschrift-faellig">Bezug zur Rechnung / Fälligkeit</label>
+          <input type="date" id="gutschrift-faellig">
+        </div>
+      </div>
+      <div class="row">
+        <div class="form-group">
+          <label for="gutschrift-bezug-rechnung-id">Rechnungs-ID</label>
+          <input type="text" id="gutschrift-bezug-rechnung-id" readonly>
+        </div>
+        <div class="form-group">
+          <label for="gutschrift-booking-id">Buchungs-ID</label>
+          <input type="text" id="gutschrift-booking-id" readonly>
+        </div>
+      </div>
+      <div class="row">
+        <div class="form-group">
+          <label for="gutschrift-bezug-rechnung-id-intern">Interne Rechnungsnummer / ID</label>
+          <input type="text" id="gutschrift-bezug-rechnung-id-intern" readonly>
+        </div>
+        <div class="form-group">
+          <label for="gutschrift-grund">Gutschriftgrund</label>
+          <input type="text" id="gutschrift-grund" placeholder="z.B. Teilstorno, Preisnachlass, Korrektur">
+        </div>
+      </div>
+      <div class="row">
+        <div class="form-group">
+          <label for="gutschrift-erstellt-aus-rechnung">Erstellt aus Rechnung</label>
+          <input type="text" id="gutschrift-erstellt-aus-rechnung" readonly>
+        </div>
+        <div class="form-group">
+          <label for="gutschrift-faellig">Fälligkeitsinfo</label>
+          <input type="date" id="gutschrift-faellig">
+        </div>
+      </div>
+      <div class="row">
+        <div class="form-group">
+          <label for="gutschrift-referenz-ab">Referenz Rechnung *</label>
+          <input type="text" id="gutschrift-referenz-ab">
+        </div>
+        <div class="form-group">
+          <label for="gutschrift-referenz-angebot">Referenz Ursprungsbeleg (optional)</label>
+          <input type="text" id="gutschrift-referenz-angebot">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h2>Verknüpfung zur Rechnung</h2>
+      <div class="info-box">
+        <div class="row">
+          <div class="form-group">
+            <label for="gutschrift-anzahlung-betrag">Rechnungsbetrag (Brutto, Info)</label>
+            <input type="number" id="gutschrift-anzahlung-betrag" value="0" min="0" step="0.01" readonly>
+          </div>
+          <div class="form-group">
+            <label for="gutschrift-anzahlung-mwst">MwSt. (%)</label>
+            <input type="number" id="gutschrift-anzahlung-mwst" value="19" min="0" step="1" readonly>
+          </div>
+        </div>
+        <div class="row">
+          <div class="form-group">
+            <label for="gutschrift-anzahlung-faellig">Rechnungs-Fälligkeit (Info)</label>
+            <input type="date" id="gutschrift-anzahlung-faellig" readonly>
+          </div>
+          <div class="form-group">
+            <label for="gutschrift-anzahlung-in-tabelle">Vollständige Gutschrift?</label>
+            <select id="gutschrift-anzahlung-in-tabelle">
+              <option value="ja" selected>Ja (ganze Rechnung gutschreiben)</option>
+              <option value="nein">Nein (Teil-Gutschrift)</option>
+            </select>
+          </div>
+        </div>
+        <p class="hint">Die Gutschrift bleibt mit der Rechnung verknüpft. Positionen werden beim Laden aus der Rechnung automatisch negativ übernommen.</p>
+      </div>
+    </div>
+
+    <div class="form-section items-section">
+      <h2>Gutschrift-Positionen</h2>
+      <div id="gutschrift-items"></div>
+      <button class="add-item-btn" onclick="addItem('gutschrift')">+ Position hinzufügen</button>
+    </div>
+
+    <div class="form-section">
+      <h2>Zusätzliche Informationen</h2>
+      <div class="form-group">
+        <label for="gutschrift-notizen">Anmerkungen / Gutschriftgrund</label>
+        <textarea id="gutschrift-notizen"></textarea>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" onclick="generatePreview('gutschrift')">Vorschau anzeigen</button>
+      <button class="btn btn-secondary" onclick="printDocument()">Drucken / PDF</button>
+      <button class="btn btn-secondary" onclick="saveGutschriftJsonLocally()">Gutschrift speichern (JSON)</button>
+      
+      <label class="btn btn-muted" style="cursor: pointer; text-align: center;">
+        Alte Gutschrift laden (JSON)
+        <input type="file" accept="application/json" style="display: none;" onchange="loadGutschriftJsonForGutschrift(event)">
+      </label>
+    </div>
+
+    <div id="gutschrift-preview" class="preview"></div>
   </div>
 
   <!-- Buchungen -->
@@ -1651,6 +1829,11 @@ function defaultTextRechnung() {
 Sollten Sie mit unserem Eventfloß-Erlebnis zufrieden gewesen sein, freuen wir uns sehr über eine positive Bewertung bei Google sowie Ihre Weiterempfehlung.`;
 }
 
+function defaultTextGutschrift() {
+  return `Hiermit bestätigen wir die Ausstellung der nachfolgenden Gutschrift.
+Die Gutschrift bezieht sich auf die angegebene Rechnung und wird entsprechend verrechnet bzw. ausgezahlt.`;
+}
+
 /** =========================
  *  BANK + MONEY
  *  ========================= */
@@ -1791,7 +1974,7 @@ function switchTab(type, ev) {
 /** =========================
  *  ITEMS
  *  ========================= */
-let itemCounters = { angebot: 0, rechnung: 0, auftragsbestaetigung: 0 };
+let itemCounters = { angebot: 0, rechnung: 0, auftragsbestaetigung: 0, gutschrift: 0 };
 
 
 
@@ -2336,6 +2519,159 @@ function buildRechnungJson() {
     },
     notizen: getVal('rechnung-notizen')
   };
+}
+
+function buildGutschriftJson() {
+  return {
+    typ: 'gutschrift',
+    nummer: getVal('gutschrift-nummer'),
+    datum: getVal('gutschrift-datum'),
+    bookingId: getVal('gutschrift-booking-id') || null,
+    kunde: {
+      name: getVal('gutschrift-kunde-name'),
+      adresse: getVal('gutschrift-kunde-adresse'),
+      plz: getVal('gutschrift-kunde-plz'),
+      ort: getVal('gutschrift-kunde-ort'),
+      email: getVal('gutschrift-kunde-email') || ''
+    },
+    leistungsdatum: getVal('gutschrift-leistung'),
+    faellig: getVal('gutschrift-faellig'),
+    referenzRechnung: getVal('gutschrift-referenz-ab'),
+    referenzAngebot: getVal('gutschrift-referenz-angebot'),
+    rechnungId: getVal('gutschrift-bezug-rechnung-id') || getVal('gutschrift-bezug-rechnung-id-intern') || null,
+    erstelltAusRechnung: getVal('gutschrift-erstellt-aus-rechnung') || '',
+    grund: getVal('gutschrift-grund') || '',
+    positionen: collectItems('gutschrift'),
+    rechnungsinfo: {
+      betragBrutto: parseFloat(getVal('gutschrift-anzahlung-betrag') || 0),
+      mwst: parseFloat(getVal('gutschrift-anzahlung-mwst') || 0),
+      faellig: getVal('gutschrift-anzahlung-faellig'),
+      vollstaendig: getVal('gutschrift-anzahlung-in-tabelle') || 'ja'
+    },
+    notizen: getVal('gutschrift-notizen')
+  };
+}
+
+function saveGutschriftJsonLocally() {
+  const data = buildGutschriftJson();
+  if (!String(data.nummer || '').trim()) {
+    alert('Bitte eine Gutschriftsnummer eingeben.');
+    return;
+  }
+  saveJsonLocally(data, data.nummer + '.json');
+}
+
+function loadGutschriftJsonForGutschrift(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const r = new FileReader();
+  r.onload = function() {
+    try {
+      const data = JSON.parse(String(r.result || '').replace(/^﻿/, '').trim());
+      fillFormFromJson('gutschrift', data);
+      setIfExists('gutschrift-bezug-rechnung-id', data.rechnungId || '');
+      setIfExists('gutschrift-bezug-rechnung-id-intern', data.rechnungId || '');
+      setIfExists('gutschrift-booking-id', data.bookingId || '');
+      setIfExists('gutschrift-erstellt-aus-rechnung', data.erstelltAusRechnung || '');
+      setIfExists('gutschrift-grund', data.grund || '');
+      if (data.rechnungsinfo) {
+        setIfExists('gutschrift-anzahlung-betrag', data.rechnungsinfo.betragBrutto || 0);
+        setIfExists('gutschrift-anzahlung-mwst', data.rechnungsinfo.mwst || 0);
+        setIfExists('gutschrift-anzahlung-faellig', data.rechnungsinfo.faellig || '');
+        setIfExists('gutschrift-anzahlung-in-tabelle', data.rechnungsinfo.vollstaendig || 'ja');
+      }
+      setIfExists('gutschrift-faellig', data.faellig || '');
+      alert('Gutschrift geladen.');
+    } catch (e) {
+      console.error(e);
+      alert('Ungültige Gutschrift-JSON.');
+    }
+  };
+  r.readAsText(file, 'utf-8');
+  event.target.value = '';
+}
+
+function loadRechnungJsonForGutschrift(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const r = new FileReader();
+  r.onload = function() {
+    try {
+      const data = JSON.parse(String(r.result || '').replace(/^﻿/, '').trim());
+      fuelleGutschriftAusRechnung(data);
+      alert('Rechnung für Gutschrift übernommen.');
+    } catch (e) {
+      console.error(e);
+      alert('Ungültige Rechnungs-JSON.');
+    }
+  };
+  r.readAsText(file, 'utf-8');
+  event.target.value = '';
+}
+
+function fuelleGutschriftAusRechnung(data) {
+  if (!data) return;
+  setIfExists('gutschrift-kunde-name', data.kunde?.name || '');
+  setIfExists('gutschrift-kunde-adresse', data.kunde?.adresse || '');
+  setIfExists('gutschrift-kunde-plz', data.kunde?.plz || '');
+  setIfExists('gutschrift-kunde-ort', data.kunde?.ort || '');
+  setIfExists('gutschrift-kunde-email', data.kunde?.email || '');
+  setIfExists('gutschrift-leistung', data.leistungsdatum || '');
+  setIfExists('gutschrift-faellig', data.faellig || '');
+  setIfExists('gutschrift-referenz-ab', data.nummer || data.referenzAuftragsbestaetigung || '');
+  setIfExists('gutschrift-referenz-angebot', data.referenzAngebot || '');
+  setIfExists('gutschrift-bezug-rechnung-id', data.bookingId || '');
+  setIfExists('gutschrift-bezug-rechnung-id-intern', data.bookingId || '');
+  setIfExists('gutschrift-booking-id', data.bookingId || '');
+  setIfExists('gutschrift-erstellt-aus-rechnung', data.nummer || '');
+  setIfExists('gutschrift-grund', 'Gutschrift zu Rechnung ' + (data.nummer || ''));
+  setIfExists('gutschrift-anzahlung-betrag', data.anzahlung?.betragBrutto || 0);
+  setIfExists('gutschrift-anzahlung-mwst', data.anzahlung?.mwst || 0);
+  setIfExists('gutschrift-anzahlung-faellig', data.anzahlung?.faellig || '');
+  setIfExists('gutschrift-anzahlung-in-tabelle', 'ja');
+
+  const itemsContainer = document.getElementById('gutschrift-items');
+  if (itemsContainer) itemsContainer.innerHTML = '';
+  itemCounters['gutschrift'] = 0;
+
+  (Array.isArray(data.positionen) ? data.positionen : []).forEach(pos => {
+    addItem('gutschrift');
+    const id = itemCounters['gutschrift'] - 1;
+    setIfExists(`gutschrift-desc-${id}`, pos.beschreibung || '');
+    setIfExists(`gutschrift-qty-${id}`, pos.menge || 1);
+    const brutto = parseFloat(pos.einzelpreisBrutto ?? pos.einzelpreis ?? 0) || 0;
+    setIfExists(`gutschrift-price-${id}`, Math.abs(brutto) * -1);
+    setIfExists(`gutschrift-tax-${id}`, parseFloat(pos.mwst ?? 19) || 19);
+  });
+
+  if (!document.querySelector('#gutschrift-items .item-row')) addItem('gutschrift');
+}
+
+function fillFormFromJson(type, data) {
+  if (!data) return;
+  setIfExists(`${type}-nummer`, data.nummer || '');
+  setIfExists(`${type}-datum`, data.datum || '');
+  setIfExists(`${type}-kunde-name`, data.kunde?.name || '');
+  setIfExists(`${type}-kunde-adresse`, data.kunde?.adresse || '');
+  setIfExists(`${type}-kunde-plz`, data.kunde?.plz || '');
+  setIfExists(`${type}-kunde-ort`, data.kunde?.ort || '');
+  setIfExists(`${type}-kunde-email`, data.kunde?.email || '');
+  setIfExists(`${type}-leistung`, data.leistungsdatum || '');
+  setIfExists(`${type}-notizen`, data.notizen || '');
+  setIfExists(`${type}-referenz-ab`, data.referenzAuftragsbestaetigung || data.referenzRechnung || '');
+  setIfExists(`${type}-referenz-angebot`, data.referenzAngebot || '');
+  const itemsContainer = document.getElementById(`${type}-items`);
+  if (itemsContainer) itemsContainer.innerHTML = '';
+  itemCounters[type] = 0;
+  (Array.isArray(data.positionen) ? data.positionen : []).forEach(pos => {
+    addItem(type);
+    const id = itemCounters[type] - 1;
+    setIfExists(`${type}-desc-${id}`, pos.beschreibung || '');
+    setIfExists(`${type}-qty-${id}`, pos.menge || 1);
+    setIfExists(`${type}-price-${id}`, pos.einzelpreisBrutto ?? pos.einzelpreis ?? 0);
+    setIfExists(`${type}-tax-${id}`, pos.mwst ?? 19);
+  });
+  if (!document.querySelector(`#${type}-items .item-row`)) addItem(type);
 }
 
 function saveJsonLocally(data, fileName) {
@@ -3573,44 +3909,52 @@ function loadAuftragsbestaetigungJsonForRechnung(event) {
 }
 
 function fuelleRechnungAusAuftragsbestaetigung(ab) {
-  if (ab.bookingId) {
-  setIfExists('rechnung-booking-id', ab.bookingId);
-}
+  if (!ab) return;
 
-  setIfExists("rechnung-kunde-name", ab.kunde.name || "");
-  setIfExists("rechnung-kunde-adresse", ab.kunde.adresse || "");
-  setIfExists("rechnung-kunde-plz", ab.kunde.plz || "");
-  setIfExists("rechnung-kunde-ort", ab.kunde.ort || "");
-  setIfExists("rechnung-kunde-email", ab.kunde.email || "");
+  if (ab.bookingId) {
+    setIfExists("rechnung-booking-id", ab.bookingId);
+  }
+
+  setIfExists("rechnung-kunde-name", ab.kunde?.name || "");
+  setIfExists("rechnung-kunde-adresse", ab.kunde?.adresse || "");
+  setIfExists("rechnung-kunde-plz", ab.kunde?.plz || "");
+  setIfExists("rechnung-kunde-ort", ab.kunde?.ort || "");
+  setIfExists("rechnung-kunde-email", ab.kunde?.email || "");
 
   setIfExists("rechnung-leistung", ab.leistungsdatum || "");
   setIfExists("rechnung-referenz-ab", ab.nummer || "");
   setIfExists("rechnung-referenz-angebot", ab.referenzAngebot || "");
 
   const itemsContainer = document.getElementById("rechnung-items");
-  itemsContainer.innerHTML = "";
+  if (itemsContainer) {
+    itemsContainer.innerHTML = "";
+  }
   itemCounters.rechnung = 0;
 
-  if (Array.isArray(ab.positionen) && ab.positionen.length) {
+  if (Array.isArray(ab.positionen) && ab.positionen.length > 0) {
     ab.positionen.forEach(pos => {
       addItem("rechnung");
       const id = itemCounters.rechnung - 1;
+
       setIfExists(`rechnung-desc-${id}`, pos.beschreibung || "");
-      setIfExists(`rechnung-qty-${id}`, (pos.menge != null ? pos.menge : 1));
-      setIfExists(`rechnung-price-${id}`, (pos.einzelpreisBrutto != null ? pos.einzelpreisBrutto : 0));
-      setIfExists(`rechnung-tax-${id}`, (pos.mwst != null ? pos.mwst : 19));
+      setIfExists(`rechnung-qty-${id}`, pos.menge != null ? pos.menge : 1);
+      setIfExists(`rechnung-price-${id}`, pos.einzelpreisBrutto != null ? pos.einzelpreisBrutto : (pos.einzelpreis != null ? pos.einzelpreis : 0));
+      setIfExists(`rechnung-tax-${id}`, pos.mwst != null ? pos.mwst : 19);
     });
   } else {
     addItem("rechnung");
-  
+  }
 
   const anz = ab.anzahlung || {};
-  setIfExists("rechnung-anzahlung-betrag", (anz.betragBrutto != null ? anz.betragBrutto : 0));
-  setIfExists("rechnung-anzahlung-mwst", (anz.mwst != null ? anz.mwst : 19));
+  const anzBetrag = parseFloat(anz.betragBrutto != null ? anz.betragBrutto : 0) || 0;
+  const anzMwst = parseFloat(anz.mwst != null ? anz.mwst : 19) || 19;
+
+  setIfExists("rechnung-anzahlung-betrag", anzBetrag);
+  setIfExists("rechnung-anzahlung-mwst", anzMwst);
   setIfExists("rechnung-anzahlung-faellig", anz.faellig || "");
+  setIfExists("rechnung-anzahlung-in-tabelle", "ja");
 
   setIfExists("rechnung-notizen", defaultTextRechnung());
-}
 }
 
 /** =========================
@@ -4748,9 +5092,11 @@ window.addEventListener('load', async () => {
     setIfExists("angebot-datum", today);
     setIfExists("auftragsbestaetigung-datum", today);
     setIfExists("rechnung-datum", today);
+    setIfExists("gutschrift-datum", today);
     setTextareaIfEmpty("angebot-notizen", defaultTextAngebot());
     setTextareaIfEmpty("auftragsbestaetigung-notizen", defaultTextAuftragsbestaetigung());
     setTextareaIfEmpty("rechnung-notizen", defaultTextRechnung());
+    setTextareaIfEmpty("gutschrift-notizen", defaultTextGutschrift());
     addItem("angebot");
     addItem("rechnung");
     if (typeof bookingRefreshUI === 'function') bookingRefreshUI();
