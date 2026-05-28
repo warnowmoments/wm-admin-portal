@@ -318,32 +318,62 @@ function switchTab(a, b) {
     @media print { .zahlungsblock { page-break-inside: avoid; } }
 
     @media print {
-      @page { margin: 20mm 15mm 30mm 15mm; }
-      body { background: white; padding: 0; }
-      .header, .tabs, .form-section, .actions, #runtime-error { display: none !important; }
-      .document-panel { box-shadow: none; padding: 0; }
-      .preview {
-        display: block !important;
-        border: none;
-        padding: 0 15mm 0 15mm;
-        page-break-after: auto;
-      }
-      .preview-footer {
-        position: fixed;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        padding: 4mm 15mm 4mm 15mm;
-        border-top: 1px solid #1D334A;
-        font-size: 0.75em;
-        line-height: 1.2;
-        color: #666;
-        background: white;
-        z-index: 9999;
-      }
-      .preview-footer p { margin: 0; }
-      .preview-footer p + p { margin-top: 1.5mm; }
-    }
+  @page { margin: 20mm 15mm 30mm 15mm; }
+
+  html, body {
+    background: white !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .header, .tabs, .form-section, .actions, #runtime-error {
+    display: none !important;
+  }
+
+  .document-panel {
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .preview {
+    display: block !important;
+    border: none !important;
+    padding: 0 0 28mm 0 !important;
+    margin: 0 !important;
+    page-break-before: auto !important;
+    page-break-after: auto !important;
+    break-before: auto !important;
+    break-after: auto !important;
+  }
+
+  .preview * {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .preview-footer {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 4mm 15mm 4mm 15mm;
+    border-top: 1px solid #1D334A;
+    font-size: 0.75em;
+    line-height: 1.2;
+    color: #666;
+    background: white;
+    z-index: 9999;
+  }
+
+  .preview-footer p {
+    margin: 0;
+  }
+
+  .preview-footer p + p {
+    margin-top: 1.5mm;
+  }
+}
   
 
     /* WMK Native Calendar + Popup */
@@ -844,12 +874,17 @@ function switchTab(a, b) {
         <label for="rechnung-notizen">Anmerkungen / Hinweise</label>
         <textarea id="rechnung-notizen"></textarea>
       </div>
+	<div class="form-group">
+  	<label for="rechnung-storno-grund">Stornogrund</label>
+  	<textarea id="rechnung-storno-grund" placeholder="z. B. Kunde wünscht Storno wegen Terminänderung"></textarea>
+	</div>
     </div>
 
     <div class="actions">
       <button class="btn btn-primary" onclick="generatePreview('rechnung')">Vorschau anzeigen</button>
       <button class="btn btn-secondary" onclick="printDocument()">Drucken / PDF</button>
       <button class="btn btn-secondary" onclick="saveRechnungJsonLocally()">Rechnung speichern (JSON)</button>
+      <button class="btn btn-danger" onclick="stornoRechnung()">Rechnung stornieren</button>
       
       <label class="btn btn-muted" style="cursor: pointer; text-align: center;">
         Alte Rechnung laden (JSON)
@@ -858,6 +893,7 @@ function switchTab(a, b) {
     </div>
 
     <div id="rechnung-preview" class="preview"></div>
+    <div id="storno_rechnung-preview" class="preview"></div>
   </div>
 
 
@@ -3503,7 +3539,7 @@ if (!bookingId && existingAB?.booking_id) {
         customer_email: data.kunde ? data.kunde.email : null,
         total_amount: gesamtBrutto,
         deposit_amount: Number(vorhandeneAnzahlung.toFixed(2)),
-        open_amount: restbetrag,
+        final_amount: restbetrag,
         deposit_paid: Number(vorhandeneAnzahlungBezahlt.toFixed(2)),
         final_paid: 0,
         deposit_due: null,
@@ -3565,7 +3601,7 @@ if (!bookingId && existingAB?.booking_id) {
         invoice_amount_net: gesamtNetto,
         invoice_tax_amount: gesamtSteuer,
         deposit_amount: Number(vorhandeneAnzahlung.toFixed(2)),
-        final_amount: restbetrag,
+        open_amount: restbetrag,
         tax_rate: taxRate,
         total_amount_19: Number(brutto19.toFixed(2)),
         total_amount_7: Number(brutto7.toFixed(2)),
@@ -3618,6 +3654,150 @@ if (!bookingId && existingAB?.booking_id) {
     }
   }
 }
+
+function buildStornoNumber(originalInvoiceNumber) {
+  const base = String(originalInvoiceNumber || '').trim();
+  if (!base) return '';
+  if (base.startsWith('ST-')) return base;
+  return `ST-${base}`;
+}
+
+async function stornoNumberExists(stornoNumber) {
+  if (typeof sb === 'undefined' || !sb || !stornoNumber) return false;
+
+  const { data, error } = await sb
+    .from('wm_documents')
+    .select('id')
+    .eq('type', 'storno_rechnung')
+    .eq('number', stornoNumber)
+    .maybeSingle();
+
+  if (error) throw error;
+  return !!data;
+}
+
+async function stornoRechnung() {
+  const original = buildRechnungJson();
+  const invoiceNumber = String(original.nummer || getVal('rechnung-nummer') || '').trim();
+
+  if (!invoiceNumber) {
+    alert('Bitte zuerst die Rechnung laden oder eine Rechnungsnummer eintragen.');
+    return;
+  }
+
+  const reason = prompt('Bitte Stornogrund eingeben:');
+  if (reason === null) return;
+
+  const stornoReason = String(reason).trim();
+  if (!stornoReason) {
+    alert('Bitte einen Stornogrund angeben.');
+    return;
+  }
+
+  const confirmText =
+    `Storno-Rechnung für ${invoiceNumber} wirklich erstellen?\n\n` +
+    `Die Originalrechnung bleibt unverändert. Es wird ein neuer Storno-Beleg erzeugt.`;
+  if (!confirm(confirmText)) return;
+
+  const today = new Date().toISOString().split('T')[0];
+  const stornoNumber = buildStornoNumber(invoiceNumber);
+
+  const negate = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? -Math.abs(n) : 0;
+  };
+
+  const stornoPositions = Array.isArray(original.positionen)
+    ? original.positionen.map((pos) => ({
+        ...pos,
+        menge: pos.menge != null ? pos.menge : 1,
+        einzelpreis: negate(pos.einzelpreis ?? pos.einzelpreisBrutto ?? 0),
+        einzelpreisBrutto: negate(pos.einzelpreisBrutto ?? pos.einzelpreis ?? 0),
+        gesamtpreis: negate(pos.gesamtpreis ?? 0)
+      }))
+    : [];
+
+  const stornoData = {
+    typ: 'storno_rechnung',
+    nummer: stornoNumber,
+    datum: today,
+    originalRechnung: original.nummer,
+    originalRechnungsdatum: original.datum || null,
+    stornoGrund: stornoReason,
+    stornoDatum: today,
+    bookingId: original.bookingId || null,
+    kunde: original.kunde || {},
+    leistungsdatum: original.leistungsdatum || null,
+    faellig: today,
+    referenzAuftragsbestaetigung: original.referenzAuftragsbestaetigung || null,
+    referenzAngebot: original.referenzAngebot || null,
+    positionen: stornoPositions,
+    anzahlung: {
+      betragBrutto: negate(original.anzahlung?.betragBrutto || 0),
+      mwst: original.anzahlung?.mwst || 0,
+      faellig: original.anzahlung?.faellig || null,
+      inTabelle: original.anzahlung?.inTabelle || 'ja'
+    },
+    notizen: `Storno zu Rechnung ${original.nummer}. Grund: ${stornoReason}`
+  };
+
+  try {
+    if (typeof sb !== 'undefined' && sb) {
+      const exists = await stornoNumberExists(stornoNumber);
+      const payload = {
+        type: 'storno_rechnung',
+        number: stornoNumber,
+        customer_name: stornoData.kunde?.name || null,
+        content: stornoData
+      };
+
+      if (exists) {
+        const { data: existingDoc, error: findError } = await sb
+          .from('wm_documents')
+          .select('id')
+          .eq('type', 'storno_rechnung')
+          .eq('number', stornoNumber)
+          .maybeSingle();
+
+        if (findError) throw findError;
+        if (!existingDoc || !existingDoc.id) {
+          throw new Error('Storno-Beleg existiert bereits, konnte aber nicht eindeutig gefunden werden.');
+        }
+
+        const { error: updateError } = await sb
+          .from('wm_documents')
+          .update(payload)
+          .eq('id', existingDoc.id);
+
+        if (updateError) throw updateError;
+      } else {
+        const { error: insertError } = await sb
+          .from('wm_documents')
+          .insert(payload);
+
+        if (insertError) throw insertError;
+      }
+    }
+
+    saveJsonLocally(stornoData, `${stornoNumber}.json`);
+generatePreview("storno_rechnung");
+
+const preview = document.getElementById("storno_rechnung-preview");
+if (preview) {
+  preview.classList.add("active");
+  preview.scrollIntoView({ behavior: "smooth" });
+}
+
+alert(`Storno-Rechnung ${stornoNumber} wurde erstellt.`);
+  } catch (err) {
+    console.error('stornoRechnung Fehler:', err);
+    alert('Storno-Rechnung konnte nicht erstellt werden: ' + err.message);
+  }
+}
+
+window.buildStornoNumber = buildStornoNumber;
+window.stornoNumberExists = stornoNumberExists;
+window.stornoRechnung = stornoRechnung;
    
 /** =========================
  *  LOAD JSON
@@ -4159,13 +4339,60 @@ function bookingWipeAll() {
  *  PREVIEW / PRINT
  *  ========================= */
 function getDocMeta(type) {
-  if (type === "angebot") return { title:"ANGEBOT", numberLabel:"Angebotsnummer", numberId:"angebot-nummer", dateId:"angebot-datum", leistungId:"angebot-leistung" };
-  if (type === "rechnung") return { title:"RECHNUNG", numberLabel:"Rechnungsnummer", numberId:"rechnung-nummer", dateId:"rechnung-datum", leistungId:"rechnung-leistung" };
-  return { title:"AUFTRAGSBESTÄTIGUNG", numberLabel:"Auftragsbestätigungsnummer", numberId:"auftragsbestaetigung-nummer", dateId:"auftragsbestaetigung-datum", leistungId:"auftragsbestaetigung-leistung" };
+  if (type === "angebot") {
+    return {
+      title: "ANGEBOT",
+      numberLabel: "Angebotsnummer",
+      numberId: "angebot-nummer",
+      dateId: "angebot-datum",
+      leistungId: "angebot-leistung"
+    };
+  }
+
+  if (type === "rechnung") {
+    return {
+      title: "RECHNUNG",
+      numberLabel: "Rechnungsnummer",
+      numberId: "rechnung-nummer",
+      dateId: "rechnung-datum",
+      leistungId: "rechnung-leistung"
+    };
+  }
+
+  if (type === "storno_rechnung") {
+    return {
+      title: "STORNO-RECHNUNG",
+      numberLabel: "Storno-Rechnungsnummer",
+      numberId: null,
+      dateId: null,
+      leistungId: null
+    };
+  }
+
+  return {
+    title: "AUFTRAGSBESTÄTIGUNG",
+    numberLabel: "Auftragsbestätigungsnummer",
+    numberId: "auftragsbestaetigung-nummer",
+    dateId: "auftragsbestaetigung-datum",
+    leistungId: "auftragsbestaetigung-leistung"
+  };
 }
 
 async function generatePreview(type) {
   bookingLoadAll();
+
+  const isStorno = type === "storno_rechnung";
+  let data = null;
+
+  if (isStorno) {
+  data = buildRechnungJson();
+  data.typ = "storno_rechnung";
+  data.nummer = buildStornoNumber(data.nummer || getVal("rechnung-nummer") || "");
+  data.datum = data.datum || new Date().toISOString().split('T')[0];
+  data.originalRechnung = data.originalRechnung || getVal("rechnung-referenz-ab") || "";
+  data.originalRechnungsdatum = data.originalRechnungsdatum || getVal("rechnung-datum") || "";
+  data.stornoGrund = data.stornoGrund || getVal("rechnung-storno-grund") || "Storno";
+}
 
   if (type === "angebot" && BOOKING.REQUIRE_FOR_OFFER) {
     const chk = updateOfferBookingCheck(true);
@@ -4175,15 +4402,34 @@ async function generatePreview(type) {
     ensureBookingConfirmedForAB({mode:"preview"});
   }
 
-  const kundeName = getVal(`${type}-kunde-name`);
-  const kundeAdresse = getVal(`${type}-kunde-adresse`);
-  const kundePlz = getVal(`${type}-kunde-plz`);
-  const kundeOrt = getVal(`${type}-kunde-ort`);
-  if (!kundeName || !kundeAdresse || !kundePlz || !kundeOrt) { alert("Bitte alle Pflichtfelder ausfüllen."); return; }
+  const kundeName = isStorno
+    ? getVal("rechnung-kunde-name")
+    : getVal(`${type}-kunde-name`);
+
+  const kundeAdresse = isStorno
+    ? getVal("rechnung-kunde-adresse")
+    : getVal(`${type}-kunde-adresse`);
+
+  const kundePlz = isStorno
+    ? getVal("rechnung-kunde-plz")
+    : getVal(`${type}-kunde-plz`);
+
+  const kundeOrt = isStorno
+    ? getVal("rechnung-kunde-ort")
+    : getVal(`${type}-kunde-ort`);
+
+  if (!kundeName || !kundeAdresse || !kundePlz || !kundeOrt) {
+    alert("Bitte alle Pflichtfelder ausfüllen.");
+    return;
+  }
 
   const docMeta = getDocMeta(type);
-  const docNummer = getVal(docMeta.numberId);
-  const docDatum = getVal(docMeta.dateId);
+const docNummer = isStorno
+  ? (data.nummer || "")
+  : getVal(docMeta.numberId);
+const docDatum = isStorno
+  ? (data.datum || "")
+  : getVal(docMeta.dateId);
 
   let additionalInfo = "";
   const leistungVal = docMeta.leistungId ? getVal(docMeta.leistungId) : "";
@@ -4219,19 +4465,46 @@ async function generatePreview(type) {
     if (refAngebot) additionalInfo += `<p><strong>Referenz Angebot:</strong> ${escapeHtml(refAngebot)}</p>`;
   }
 
-  let tableRows = "";
+  if (isStorno) {
+    if (data.originalRechnung) {
+      additionalInfo += `<p><strong>Storno zu Rechnung:</strong> ${escapeHtml(data.originalRechnung)}</p>`;
+    }
+    if (data.originalRechnungsdatum) {
+      additionalInfo += `<p><strong>Originaldatum:</strong> ${formatDate(data.originalRechnungsdatum)}</p>`;
+    }
+    if (data.stornoGrund) {
+      additionalInfo += `<p><strong>Stornogrund:</strong> ${escapeHtml(data.stornoGrund)}</p>`;
+    }
+  }
+
+    let tableRows = "";
   let subtotal = 0;
   let totalTax = 0;
   let rowIndex = 0;
 
-  const items = document.querySelectorAll(`#${type}-items .item-row`);
-  items.forEach(item => {
-    const desc = item.querySelector(`input[id^="${type}-desc-"]`)?.value || "";
-    if (!desc) return;
+  const rowsSource = isStorno
+    ? (Array.isArray(data.positionen) ? data.positionen : [])
+    : Array.from(document.querySelectorAll(`#${type}-items .item-row`));
 
-    const qty = parseFloat(item.querySelector(`input[id^="${type}-qty-"]`)?.value) || 0;
-    const brutto = parseFloat(item.querySelector(`input[id^="${type}-price-"]`)?.value) || 0;
-    const tax = parseFloat(item.querySelector(`input[id^="${type}-tax-"]`)?.value) || 0;
+  rowsSource.forEach(item => {
+    let desc = "";
+    let qty = 0;
+    let brutto = 0;
+    let tax = 0;
+
+    if (isStorno) {
+      desc = item.bezeichnung || item.beschreibung || item.desc || item.name || item.artikel || "";
+      qty = parseFloat(item.menge) || 0;
+      brutto = parseFloat(item.einzelpreisBrutto ?? item.einzelpreis ?? 0) || 0;
+      tax = parseFloat(item.mwst ?? item.steuersatz ?? item.tax_rate ?? 0) || 0;
+    } else {
+      desc = item.querySelector(`input[id^="${type}-desc-"]`)?.value || "";
+      if (!desc) return;
+
+      qty = parseFloat(item.querySelector(`input[id^="${type}-qty-"]`)?.value) || 0;
+      brutto = parseFloat(item.querySelector(`input[id^="${type}-price-"]`)?.value) || 0;
+      tax = parseFloat(item.querySelector(`input[id^="${type}-tax-"]`)?.value) || 0;
+    }
 
     rowIndex++;
 
