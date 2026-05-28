@@ -3503,7 +3503,7 @@ if (!bookingId && existingAB?.booking_id) {
         customer_email: data.kunde ? data.kunde.email : null,
         total_amount: gesamtBrutto,
         deposit_amount: Number(vorhandeneAnzahlung.toFixed(2)),
-        final_amount: restbetrag,
+        open_amount: restbetrag,
         deposit_paid: Number(vorhandeneAnzahlungBezahlt.toFixed(2)),
         final_paid: 0,
         deposit_due: null,
