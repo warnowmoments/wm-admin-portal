@@ -3612,18 +3612,44 @@ if (!bookingId && existingAB?.booking_id) {
         notes: `Rechnung ${invoiceNumber}${referenzAB ? ` | Referenz AB ${referenzAB}` : ''}${referenzAngebot ? ` | Referenz Angebot ${referenzAngebot}` : ''}`
       };
 
-      // 2. Commercial Transaction Eintrag updaten oder erstellen (und ID merken)
-      const { data: existingCommercial, error: existingCommercialError } = await sb.from('commercial_transactions')
-        .select('id')
-        .eq('invoice_number', invoiceNumber)
-        .limit(1);
+            // 2. Commercial Transaction Eintrag updaten oder erstellen (und ID merken)
+      let existingCommercial = null;
+      let existingCommercialError = null;
+
+      // ZUERST nach booking_id suchen (Das ist der Unique Key!)
+      if (bookingId) {
+        const { data, error } = await sb.from('commercial_transactions')
+          .select('id')
+          .eq('booking_id', bookingId)
+          .maybeSingle();
+        existingCommercial = data;
+        existingCommercialError = error;
+      } 
+      // FALLBACK 1: Suche nach Rechnungsnummer, falls es schon mal gespeichert wurde
+      else if (invoiceNumber) {
+        const { data, error } = await sb.from('commercial_transactions')
+          .select('id')
+          .eq('invoice_number', invoiceNumber)
+          .maybeSingle();
+        existingCommercial = data;
+        existingCommercialError = error;
+      }
+      // FALLBACK 2: Suche nach AB-Nummer, falls noch keine booking_id da ist
+      else if (referenzAB) {
+        const { data, error } = await sb.from('commercial_transactions')
+          .select('id')
+          .eq('ab_number', String(referenzAB).trim())
+          .maybeSingle();
+        existingCommercial = data;
+        existingCommercialError = error;
+      }
 
       if (existingCommercialError) throw existingCommercialError;
 
       let commercialRecordId = null;
 
-      if (existingCommercial && existingCommercial.length > 0) {
-        commercialRecordId = existingCommercial[0].id;
+      if (existingCommercial && existingCommercial.id) {
+        commercialRecordId = existingCommercial.id;
         const { error: updateCommercialError } = await sb
           .from('commercial_transactions')
           .update(commercialPayload)
@@ -3634,9 +3660,10 @@ if (!bookingId && existingAB?.booking_id) {
           .from('commercial_transactions')
           .insert(commercialPayload)
           .select('id')
-          .limit(1);
+          .single(); // single() statt maybeSingle() verwenden!
+          
         if (insertCommercialError) throw insertCommercialError;
-        commercialRecordId = insertedCommercial && insertedCommercial.length > 0 ? insertedCommercial[0].id : null;
+        commercialRecordId = insertedCommercial ? insertedCommercial.id : null;
       }
 
       // 3. Payment Eintrag mit der Commercial Transaction verknüpfen
@@ -3777,6 +3804,48 @@ async function stornoRechnung() {
 
         if (insertError) throw insertError;
       }
+    }
+
+        if (typeof sb !== 'undefined' && sb && invoiceNumber) {
+            const payFilter = sb
+        .from('payments')
+        .update({
+          status: 'storniert',
+          notes: `Storniert durch ${stornoNumber}`,
+          status_reason: stornoReason,
+          archived_at: new Date().toISOString()
+        })
+        .eq('invoice_number', invoiceNumber)
+        .eq('transaction_type', 'rechnung');
+
+      if (original.bookingId) {
+        payFilter.eq('booking_id', original.bookingId);
+      }
+
+      const { error: payUpdateError } = await payFilter;
+      if (payUpdateError) throw payUpdateError;
+
+      let ctQuery = sb
+        .from('commercial_transactions')
+        .update({
+          storno_number: stornoNumber,
+          storno_date: today,
+          storno_reason: stornoReason,
+          original_invoice_number: invoiceNumber,
+          invoice_number: stornoNumber,
+          invoice_date: today,
+          workflow_status: 'storniert',
+          status_reason: stornoReason,
+          archived_at: new Date().toISOString()
+        })
+        .eq('invoice_number', invoiceNumber);
+
+      if (original.bookingId) {
+        ctQuery = ctQuery.eq('booking_id', original.bookingId);
+      }
+
+      const { error: ctUpdateError } = await ctQuery;
+      if (ctUpdateError) throw ctUpdateError;
     }
 
     saveJsonLocally(stornoData, `${stornoNumber}.json`);
