@@ -5,110 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CJ WARNOW MOMENTS UG (haftungsbeschränkt) - Angebots-, Auftragsbestätigungs- und Rechnungsvordrucke</title>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
-// ===== SUPABASE & AUTH & INIT =====
-var sb;
-window.addEventListener('load', async () => {
-    // Basic init stuff
-    const today = new Date().toISOString().split("T")[0];
-    setIfExists("angebot-datum", today);ƒ
-    setIfExists("auftragsbestaetigung-datum", today);
-    setIfExists("rechnung-datum", today);
-  setIfExists("gutschrift-datum", today);
-    setIfExists("gutschrift-datum", today);
-    setTextareaIfEmpty("angebot-notizen", defaultTextAngebot());
-    setTextareaIfEmpty("auftragsbestaetigung-notizen", defaultTextAuftragsbestaetigung());
-    setTextareaIfEmpty("rechnung-notizen", defaultTextRechnung());
-  setTextareaIfEmpty("gutschrift-notizen", defaultTextGutschrift());
-    setTextareaIfEmpty("gutschrift-notizen", defaultTextGutschrift());
-    addItem("angebot");
-    addItem("rechnung");
-  addItem("gutschrift");
-    addItem("gutschrift");
-    if (typeof bookingRefreshUI === 'function') bookingRefreshUI();
-    updateOfferBookingCheck(false);
-
-    if (typeof supabase !== 'undefined') {
-        const { createClient } = supabase;
-        sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        console.log('✅ Supabase ready');
-
-        sb.auth.onAuthStateChange((event, session) => {
-            console.log('Auth event:', event);
-            if (session) {
-                const overlay = document.getElementById('gateOverlay');
-                if (overlay) overlay.style.setProperty('display', 'none', 'important');
-                if (typeof bookingRefreshUI === 'function') bookingRefreshUI();
-            } else {
-                const overlay = document.getElementById('gateOverlay');
-                if (overlay) overlay.style.setProperty('display', 'flex', 'important');
-            }
-        });
-
-        const { data: { session } } = await sb.auth.getSession();
-        if (session) {
-            const overlay = document.getElementById('gateOverlay');
-            if (overlay) overlay.style.setProperty('display', 'none', 'important');
-            if (typeof bookingRefreshUI === 'function') bookingRefreshUI();
-        }
-    } else {
-        console.error('❌ Supabase CDN nicht geladen');
-    }
-
-    const firstTab = document.querySelector('.tab');
-    if (firstTab && typeof switchTab === 'function') switchTab(firstTab, 'angebot-panel');
-});
-
-async function login() {
-  const emailEl = document.getElementById('loginEmail');
-  const passEl = document.getElementById('loginPassword');
-  const statusEl = document.getElementById('authStatus');
-  if (!emailEl || !passEl) return;
-  if (!emailEl.value || !passEl.value) {
-    statusEl.innerHTML = '<span style="color:#c62828;font-weight:bold;">Bitte E-Mail und Passwort eingeben.</span>';
-    return;
-  }
-  statusEl.innerHTML = 'Prüfe Daten...';
-  try {
-      const { data, error } = await sb.auth.signInWithPassword({ email: emailEl.value, password: passEl.value });
-      if (error) statusEl.innerHTML = `<span style="color:#c62828;font-weight:bold;">Fehler: ${error.message}</span>`;
-      else statusEl.innerHTML = '<span style="color:#2e7d32;font-weight:bold;">Erfolgreich!</span>';
-  } catch (err) { statusEl.innerHTML = `<span style="color:#c62828;font-weight:bold;">Netzwerk-Fehler!</span>`; }
-}
-
-async function logout() {
-  if (!confirm("Möchtest du dich wirklich abmelden?")) return;
-  try {
-    if (sb) await sb.auth.signOut();
-    localStorage.removeItem('supabase.auth.token');
-    sessionStorage.clear();
-    const overlay = document.getElementById('gateOverlay');
-    if (overlay) overlay.style.setProperty('display', 'flex', 'important');
-    document.getElementById('loginPassword').value = '';
-    document.getElementById('authStatus').innerText = 'Abgemeldet.';
-  } catch(e) { console.error("Logout Fehler", e); }
-}
-
-function switchTab(a, b) {
-  let clickedEl = null;
-  let targetId = null;
-  if (typeof a === 'string') {
-    targetId = a.endsWith('-panel') ? a : (a + '-panel');
-    if (b && b.target) clickedEl = b.target;
-  } else {
-    clickedEl = a || null;
-    targetId = String(b || '');
-  }
-  document.querySelectorAll('.document-panel').forEach(p => p.classList.remove('active'));
-  const panel = targetId ? document.getElementById(targetId) : null;
-  if (panel) panel.classList.add('active');
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  if (clickedEl && clickedEl.classList) clickedEl.classList.add('active');
-  if (targetId === 'buchungen-panel' && typeof bookingRefreshUI === 'function') bookingRefreshUI();
-  if (targetId === 'kalender-panel' && typeof WMK_CAL !== 'undefined' && WMK_CAL && typeof WMK_CAL.render === 'function') setTimeout(() => WMK_CAL.render(), 0);
-}
-
-</script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
@@ -300,6 +198,68 @@ function switchTab(a, b) {
     .t-res { background:#ef6c00; }
     .t-conf { background:#2e7d32; }
     .t-canc { background:#607d8b; }
+
+.booking-actions-cell{
+  width: 240px;
+  min-width: 200px;
+  max-width: 240px;
+  vertical-align: top;
+}
+
+.booking-actions-col{
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.booking-action-btn{
+  width: 100%;
+  min-width: 0;
+  white-space: normal;
+  overflow: hidden;
+  text-overflow: unset;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.2;
+  padding: 10px 12px;
+  text-align: center;
+  flex: none;
+}
+
+.table-plain th:last-child,
+.table-plain td:last-child{
+  width: 240px;
+  max-width: 240px;
+}
+
+.table-plain{
+  table-layout: fixed;
+}
+
+.table-plain td,
+.table-plain th{
+  word-break: break-word;
+}
+
+@media (max-width: 1100px){
+  .booking-actions-cell{
+    width: 210px;
+    min-width: 180px;
+    max-width: 210px;
+  }
+
+  .table-plain th:last-child,
+  .table-plain td:last-child{
+    width: 210px;
+    max-width: 210px;
+  }
+
+  .booking-action-btn{
+    font-size: 0.92em;
+    padding: 9px 10px;
+  }
+}
 
     #runtime-error {
       display:none;
@@ -715,7 +675,7 @@ function switchTab(a, b) {
           </div>
           <div class="form-group">
             <label for="auftragsbestaetigung-anzahlung-mwst">MwSt. (%)</label>
-            <input type="number" id="auftragsbestaetigung-anzahlung-mwst" value="19" min="0" step="1">
+            <input type="text" id="auftragsbestaetigung-anzahlung-mwst" value="19">
           </div>
         </div>
         <div class="row">
@@ -838,11 +798,11 @@ function switchTab(a, b) {
         <div class="row">
           <div class="form-group">
             <label for="rechnung-anzahlung-betrag">Anzahlung Betrag (Brutto)</label>
-            <input type="number" id="rechnung-anzahlung-betrag" value="0" min="0" step="0.01" readonly>
+            <input type="number" id="rechnung-anzahlung-betrag" value="0" min="0" step="0.01">
           </div>
           <div class="form-group">
             <label for="rechnung-anzahlung-mwst">MwSt. (%)</label>
-            <input type="number" id="rechnung-anzahlung-mwst" value="19" min="0" step="1" readonly>
+            <input type="text" id="rechnung-anzahlung-mwst" value="19" readonly>
           </div>
         </div>
         <div class="row">
@@ -858,7 +818,11 @@ function switchTab(a, b) {
             </select>
           </div>
         </div>
-        <p class="hint">In der Rechnung erscheint die Anzahlung als Verrechnungsposition (negativ), damit sie nicht doppelt fällig wirkt.</p>
+        <p class="hint">
+  Die Anzahlung wird beim Laden automatisch aus der Auftragsbestätigung übernommen.
+  Der Betrag kann in der Rechnung manuell angepasst werden, falls tatsächlich mehr oder weniger angezahlt wurde.
+  In der Rechnung erscheint die Anzahlung als Verrechnungsposition negativ, damit sie nicht doppelt fällig wirkt.
+</p>
       </div>
     </div>
 
@@ -1095,29 +1059,46 @@ function switchTab(a, b) {
 
         <div id="booking-msg" class="hint"></div>
 
-        <div class="row" style="margin-top:10px;">
-          <button class="btn btn-muted" type="button" onclick="bookingExportJson()">Export JSON</button>
-          
-                    <button class="btn btn-muted" type="button" onclick="exportPublicCalendarJson()">Öffentlichen Kalender exportieren (JSON)</button>
-                    <button class="btn btn-success" type="button" onclick="fullAutoCalendarSync()" style="background: #2e7d32; color: white; font-weight: bold;">
-  🌐 Website-Kalender aktualisieren
-</button>
+        <div class="row" style="margin-top:10px">
+  <button class="btn btn-muted" type="button" onclick="bookingExportJson()">Export JSON</button>
+  <button class="btn btn-muted" type="button" onclick="exportPublicCalendarJson()">Öffentlichen Kalender exportieren (JSON)</button>
+</div>
 
-          <label class="btn btn-muted" style="text-align:center; padding:15px 30px; border-radius:8px; cursor:pointer;">
-            Import JSON
-            <input id="booking-import-file" type="file" accept="application/json" style="display:none" onchange="bookingImportJson(event)">
-          </label>
-        </div>
+<div class="row" style="margin-top:10px">
+  <button class="btn btn-success" type="button" onclick="fullAutoCalendarSync()" style="background:#2e7d32;color:white;font-weight:bold;">
+    🌐 Website-Kalender aktualisieren
+  </button>
+  <button class="btn btn-secondary" type="button" onclick="bookingExportExcel()">Export Excel</button>
+</div>
 
-        <div class="row" style="margin-top:10px;">
-          <button class="btn btn-danger" type="button" onclick="bookingWipeAll()">ALLE Buchungen löschen</button>
-          <button class="btn btn-muted" type="button" onclick="bookingRefreshUI()">Liste aktualisieren</button>
-        </div>
-      </div>
-    </div>
+<div class="row" style="margin-top:10px">
+  <label class="btn btn-muted" style="text-align:center; padding:15px 30px; border-radius:8px; cursor:pointer;">
+    Import JSON
+    <input id="booking-import-file" type="file" accept="application/json" style="display:none" onchange="bookingImportJson(event)">
+  </label>
+  <button class="btn btn-muted" type="button" onclick="bookingRefreshUI()">Liste aktualisieren</button>
+</div>
+
+<div class="admin-tools">
+  <div class="admin-tools-title">Wartung / Migration</div>
+  <div class="admin-tools-grid">
+    <button class="btn btn-admin" type="button" onclick="backfillBookingItemsFromABDocuments()">AB → Buchungen backfill</button>
+    <button class="btn btn-admin" type="button" onclick="backfillOffersToBookings()">Angebote backfill</button>
+    <button class="btn btn-danger" type="button" onclick="bookingWipeAll()">ALLE Buchungen löschen</button>
+  </div>
+</div>
 
     <div class="form-section">
       <h2>Gespeicherte Buchungen</h2>
+<div class="booking-filters" style="display: flex; gap: 15px; margin-bottom: 20px; align-items: center; flex-wrap: wrap; background: #f9f9f9; padding: 15px; border-radius: 10px; border: 1px solid #ddd;">
+        <div style="flex: 1; min-width: 250px;">
+          <input type="text" id="booking-search-input" placeholder="Suchen nach Name, ID oder Referenz..." style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 5px; font-size: 1em;" oninput="bookingRefreshUI()">
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; background: white; padding: 10px 15px; border-radius: 5px; border: 1px solid #ddd;">
+          <input type="checkbox" id="booking-filter-active" checked onchange="bookingRefreshUI()" style="width: 20px; height: 20px; cursor: pointer; accent-color: #1D334A;">
+          <label for="booking-filter-active" style="cursor: pointer; font-weight: 600; color: #1D334A; margin: 0;">Nur aktuelle & zukünftige anzeigen</label>
+        </div>
+      </div>
       <div style="overflow:auto">
         <table class="table-plain">
           <thead>
@@ -1126,8 +1107,9 @@ function switchTab(a, b) {
             <th>Zeitraum</th>
             <th>Kunde</th>
             <th>Ref / gültig bis</th>
+	    <th>Artikel / Leistung</th>
             <th>ID</th>
-            <th style="min-width:780px;">Aktion</th>
+            <th style="min-width:240px;">Aktion</th>
           </tr>
           </thead>
           <tbody id="booking-list"></tbody>
@@ -1136,7 +1118,8 @@ function switchTab(a, b) {
       <p class="hint" style="margin-top:10px;">Nur „reserviert“ und „bestätigt“ blockieren die Verfügbarkeit.</p>
     </div>
   </div>
-
+ </div>
+</div>
 
   <!-- Kalender (Offline / Native) -->
   <div id="kalender-panel" class="document-panel">
@@ -1169,44 +1152,46 @@ function switchTab(a, b) {
         </div>
 
         <div class="calendar-legend hint" style="margin-top:10px;">
-          <span><span class="dot d-conf"></span>Buchung (bestätigt)</span>
-          <span><span class="dot d-res"></span>Reservierung (Angebot)</span>
-          <span style="margin-left:10px;color:#b71c1c;font-weight:900">Feiertage rot</span>
-          <span style="margin-left:10px">Hauptsaison blau / Nebensaison orange</span>
-        </div>
+  <span><span class="dot d-conf"></span>Buchung (bestätigt)</span>
+  <span><span class="dot d-res"></span>Reservierung (Angebot)</span>
+  <span style="margin-left:10px;color:#b71c1c;font-weight:900">Feiertage rot</span>
+  <span style="margin-left:10px">Hauptsaison blau / Nebensaison orange</span>
+</div>
 
-        <div class="hint" style="margin-top:6px;">Klick auf „Reserv.“/„Buchung“ öffnet ein Popup (bei mehreren Einträgen zuerst eine Liste).</div>
+<div class="hint" style="margin-top:6px;">Klick auf „Reserv.“/„Buchung“ öffnet ein Popup (bei mehreren Einträgen zuerst eine Liste).</div>
 
-        <div id="wm-cal-native" class="wm-cal-native" aria-label="Kalender"></div>
+<div id="wm-cal-native" class="wm-cal-native" aria-label="Kalender"></div>
       </div>
     </div>
 
-    <!-- Popup: Einzelbuchung -->
-    <div class="wm-modal" id="wm-modal">
-      <div class="wm-modal-card" role="dialog" aria-modal="true">
-        <div class="wm-modal-head">
-          <h3 id="wm-modal-title">Details</h3>
-          <button class="wm-modal-close" type="button" onclick="WMK_CAL.modalClose()">Schließen</button>
-        </div>
-        <div class="wm-modal-body">
-          <div class="wm-kv">
-            <div class="k">Status</div><div class="v" id="wm-modal-status"></div>
-            <div class="k">Zeitraum</div><div class="v" id="wm-modal-range"></div>
-            <div class="k">Kunde</div><div class="v" id="wm-modal-customer"></div>
-            <div class="k">Referenz</div><div class="v" id="wm-modal-ref"></div>
-            <div class="k">Notiz</div><div class="v" id="wm-modal-note"></div>
-            <div class="k">ID</div><div class="v mono" id="wm-modal-id"></div>
-          </div>
+    <!-- Popup Einzelbuchung -->
+<div class="wm-modal" id="wm-modal">
+  <div class="wm-modal-card" role="dialog" aria-modal="true">
+    <div class="wm-modal-head">
+      <h3 id="wm-modal-title">Details</h3>
+      <button class="wm-modal-close" type="button" onclick="WMK_CAL.modalClose()">Schließen</button>
+    </div>
 
-          <div class="wm-modal-actions">
-            <button class="btn btn-muted" type="button" onclick="WMK_CAL.editInBuchungen()">Im Tab „Buchungen“ bearbeiten</button>
-            <button class="btn btn-secondary" type="button" onclick="WMK_CAL.setConfirmed()">Auf „bestätigt“ setzen</button>
-            <button class="btn btn-danger" type="button" onclick="WMK_CAL.cancelBooking()">Stornieren</button>
-            <button class="btn btn-danger" type="button" onclick="WMK_CAL.deleteBooking()">Löschen</button>
-          </div>
-        </div>
+    <div class="wm-modal-body">
+      <div class="wm-kv">
+  <div class="k">Status</div><div class="v" id="wm-modal-status"></div>
+  <div class="k">Zeitraum</div><div class="v" id="wm-modal-range"></div>
+  <div class="k">Kunde</div><div class="v" id="wm-modal-customer"></div>
+  <div class="k">Referenz</div><div class="v" id="wm-modal-ref"></div>
+  <div class="k">Artikel / Leistung</div><div class="v" id="wm-modal-items"></div>
+  <div class="k">Notiz</div><div class="v" id="wm-modal-note"></div>
+  <div class="k">ID</div><div class="v mono" id="wm-modal-id"></div>
+</div>
+
+      <div class="wm-modal-actions">
+        <button class="btn btn-muted" type="button" onclick="WMK_CAL.editInBuchungen()">Im Tab „Buchungen“ bearbeiten</button>
+        <button class="btn btn-secondary" type="button" onclick="WMK_CAL.setConfirmed()">Auf „bestätigt“ setzen</button>
+        <button class="btn btn-danger" type="button" onclick="WMK_CAL.cancelBooking()">Stornieren</button>
+        <button class="btn btn-danger" type="button" onclick="WMK_CAL.deleteBooking()">Löschen</button>
       </div>
     </div>
+  </div>
+</div>
 
     <!-- Popup: Mehrere Einträge an einem Tag -->
     <div class="wm-modal" id="wm-day-modal">
@@ -1238,6 +1223,7 @@ function switchTab(a, b) {
 </div>
 
 <script>
+
 // ===== HILFSFUNKTIONEN =====
 function escapeHtml(unsafe) {
   if (unsafe == null) return '';
@@ -1296,19 +1282,6 @@ function escapeHtml(unsafe) {
     return String(unsafe).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
-async function logout() {
-    if (!confirm('Möchtest du dich wirklich abmelden?')) return;
-    try {
-        if (typeof supabase !== 'undefined' && supabase.auth) await supabase.auth.signOut();
-        localStorage.removeItem('supabase.auth.token');
-        sessionStorage.clear();
-        window.location.href = 'login.html';
-    } catch (error) {
-        window.location.href = 'login.html';
-    }
-}
-
-
 function renderCalendarSafe() {
   try { if (typeof WMKCAL !== "undefined" && typeof WMKCAL.render === "function") WMKCAL.render(); } catch(e) {}
   try { if (typeof WMK_CAL !== "undefined" && typeof WMK_CAL.render === "function") WMK_CAL.render(); } catch(e) {}
@@ -1334,43 +1307,6 @@ var DEPOSIT_RATE = 1 / 3;
 var OFFER_DEFAULT_START_TIME = "10:00";
 var OFFER_DEFAULT_END_TIME   = "18:00";
 var abDepositAuto = true;
-
-/** =========================
- * ZENTRALE INIT-FUNKTION (Nur diese eine!)
- * ========================= */
-/** =========================
- * ZENTRALE TAB-STEUERUNG
- * ========================= */
-function switchTab(clickedElement, targetId) {
-    // 1. Alle Panels verstecken
-    document.querySelectorAll('.document-panel').forEach(el => {
-        el.style.display = 'none';
-        el.classList.remove('active');
-    });
-    
-    // 2. Alle Tab-Buttons deaktivieren
-    document.querySelectorAll('.tab').forEach(btn => btn.classList.remove('active'));
-    
-    // 3. Das richtige Panel anzeigen
-    const target = document.getElementById(targetId);
-    if (target) {
-        target.style.display = 'block';
-        target.classList.add('active');
-    }
-    
-    // 4. Den Button optisch aktivieren
-    if (clickedElement && clickedElement.classList) {
-        clickedElement.classList.add('active');
-    }
-
-    // Spezial-Logik für Kalender-Refresh
-    if (targetId === 'buchungen-panel' && typeof bookingRefreshUI === 'function') {
-        bookingRefreshUI();
-    }
-    if (targetId === 'kalender-panel' && typeof WMK_CAL !== 'undefined') {
-        setTimeout(() => WMK_CAL.render(), 100);
-    }
-}
 
 // Den Event-Listener ganz unten lassen:
 
@@ -1574,41 +1510,41 @@ async function bookingUpsert(obj) {
 
     console.log("[DBG bookingUpsert] supabase upsert ok", dbObj.id);
 
-    if (newStatus === 'reserved' && (oldStatus !== 'reserved' || timeChanged)) {
-      try {
-        console.log("[DBG bookingUpsert] reserved -> smart-api", dbObj.id);
-        await sb.functions.invoke('smart-api', { body: { booking_id: dbObj.id } });
-      } catch (syncErr) {
-        console.error("smart-api Fehler bei Reservierung", syncErr);
-      }
-    }
+    if (newStatus === 'reserved' && (oldStatus !== 'reserved' || timeChanged || noteChanged)) {
+  try {
+    console.log("[DBG bookingUpsert] reserved -> smart-api", dbObj.id);
+    await sb.functions.invoke('smart-api', { body: { booking_id: dbObj.id } });
+  } catch (syncErr) {
+    console.error("smart-api Fehler bei Reservierung", syncErr);
+  }
+}
 
-    if (newStatus === 'confirmed' && oldStatus !== 'confirmed') {
-      try {
-        console.log("[DBG bookingUpsert] confirmed -> smart-api", dbObj.id);
-        await sb.functions.invoke('smart-api', { body: { booking_id: dbObj.id } });
-      } catch (syncErr) {
-        console.error("smart-api Fehler bei Bestätigung", syncErr);
-      }
-    }
+if (newStatus === 'confirmed' && oldStatus !== 'confirmed') {
+  try {
+    console.log("[DBG bookingUpsert] confirmed -> smart-api", dbObj.id);
+    await sb.functions.invoke('smart-api', { body: { booking_id: dbObj.id } });
+  } catch (syncErr) {
+    console.error("smart-api Fehler bei Bestätigung", syncErr);
+  }
+}
 
-    if (newStatus === 'confirmed' && oldStatus === 'confirmed' && timeChanged) {
-      try {
-        console.log("[DBG bookingUpsert] confirmed time change -> smart-api", dbObj.id);
-        await sb.functions.invoke('smart-api', { body: { booking_id: dbObj.id } });
-      } catch (syncErr) {
-        console.error("smart-api Fehler bei Terminänderung", syncErr);
-      }
-    }
+if (newStatus === 'confirmed' && oldStatus === 'confirmed' && (timeChanged || noteChanged)) {
+  try {
+    console.log("[DBG bookingUpsert] confirmed time change -> smart-api", dbObj.id);
+    await sb.functions.invoke('smart-api', { body: { booking_id: dbObj.id } });
+  } catch (syncErr) {
+    console.error("smart-api Fehler bei Terminänderung", syncErr);
+  }
+}
 
-    if (newStatus === 'cancelled' && oldStatus !== 'cancelled') {
-      try {
-        console.log("[DBG bookingUpsert] cancelled -> smart-api", dbObj.id);
-        await sb.functions.invoke('smart-api', { body: { booking_id: dbObj.id } });
-      } catch (syncErr) {
-        console.error("smart-api Delete Fehler", syncErr);
-      }
-    }
+if (newStatus === 'cancelled' && oldStatus !== 'cancelled') {
+  try {
+    console.log("[DBG bookingUpsert] cancelled -> smart-api", dbObj.id);
+    await sb.functions.invoke('smart-api', { body: { booking_id: dbObj.id } });
+  } catch (syncErr) {
+    console.error("smart-api Delete Fehler", syncErr);
+  }
+}
 
     if (typeof savePublicCalendarToSupabase === 'function') {
       if (newStatus === 'reserved' || newStatus === 'confirmed' || newStatus === 'cancelled') {
@@ -1621,6 +1557,259 @@ async function bookingUpsert(obj) {
   } catch (e) {
     console.error("Exception bei Upsert:", e);
     throw e;
+  }
+}
+
+async function backfillBookingItemsFromABDocuments() {
+  const ok = confirm('Sollen bestehende Auftragsbestätigungen einmalig in die Buchungen zurückgeschrieben werden?');
+  if (!ok) return;
+
+  try {
+    if (typeof sb === 'undefined' || !sb) {
+      throw new Error('Supabase ist nicht initialisiert.');
+    }
+
+    if (typeof bookingUpsert !== 'function') {
+      throw new Error('bookingUpsert(...) ist nicht verfügbar.');
+    }
+
+    if (typeof buildBookingPreparationNote !== 'function') {
+      throw new Error('buildBookingPreparationNote(...) ist nicht verfügbar.');
+    }
+
+    if (typeof loadBookingsFromCloud === 'function') {
+      await loadBookingsFromCloud();
+    }
+
+    const { data: docs, error } = await sb
+      .from('wm_documents')
+      .select('id, type, number, content')
+      .eq('type', 'auftragsbestaetigung');
+
+    if (error) throw error;
+
+    let total = 0;
+    let updated = 0;
+    let skipped = 0;
+    let errors = 0;
+
+    for (const doc of (docs || [])) {
+      total += 1;
+
+      try {
+        const content = doc && doc.content ? doc.content : {};
+        const bookingId =
+          content.bookingId ||
+          (content.booking && (content.booking.bookingId || content.booking.id)) ||
+          null;
+
+        const abNumber = content.nummer || doc.number || null;
+        const items = Array.isArray(content.positionen) ? content.positionen : [];
+
+        if (!bookingId || !items.length) {
+          skipped += 1;
+          continue;
+        }
+
+        const existingBooking =
+          (Array.isArray(currentBookings)
+            ? currentBookings.find(function (b) { return b && b.id === bookingId; })
+            : null) ||
+          (typeof bookingFindById === 'function' ? bookingFindById(bookingId) : null);
+
+        if (!existingBooking) {
+          skipped += 1;
+          continue;
+        }
+
+        const normalizedStartMs =
+          existingBooking.startMs ??
+          (existingBooking.start_time ? new Date(existingBooking.start_time).getTime() : null) ??
+          (existingBooking.starttime ? new Date(existingBooking.starttime).getTime() : null);
+
+        const normalizedEndMs =
+          existingBooking.endMs ??
+          (existingBooking.end_time ? new Date(existingBooking.end_time).getTime() : null) ??
+          (existingBooking.endtime ? new Date(existingBooking.endtime).getTime() : null);
+
+        const newNote = buildBookingPreparationNote('', items);
+        const oldNote = String(existingBooking.note || '').trim();
+        const newNoteTrimmed = String(newNote || '').trim();
+
+        if (oldNote === newNoteTrimmed) {
+          skipped += 1;
+          continue;
+        }
+
+        const updatedBooking = {
+          ...existingBooking,
+          id: bookingId,
+          status: 'confirmed',
+          ref: abNumber || existingBooking.ref || null,
+          customer: existingBooking.customer || (content.kunde ? content.kunde.name : null) || null,
+          customerEmail:
+            existingBooking.customerEmail ||
+            existingBooking.customeremail ||
+            existingBooking.customer_email ||
+            (content.kunde ? content.kunde.email : null) ||
+            null,
+          customeremail:
+            existingBooking.customerEmail ||
+            existingBooking.customeremail ||
+            existingBooking.customer_email ||
+            (content.kunde ? content.kunde.email : null) ||
+            null,
+          note: newNoteTrimmed,
+          startMs: normalizedStartMs,
+          endMs: normalizedEndMs
+        };
+
+        await bookingUpsert(updatedBooking);
+        updated += 1;
+      } catch (err) {
+        errors += 1;
+        console.error('Backfill-Fehler bei AB', doc, err);
+        alert(
+          'Fehler bei AB:\n' +
+          'Dokument-ID: ' + (doc && doc.id ? doc.id : '-') + '\n' +
+          'Nummer: ' + ((doc && doc.number) || (doc && doc.content && doc.content.nummer) || '-') + '\n' +
+          'Fehler: ' + (err && err.message ? err.message : err)
+        );
+        return;
+      }
+    }
+
+    if (typeof bookingRefreshUI === 'function') {
+      await bookingRefreshUI();
+    }
+
+    alert(
+      'Backfill abgeschlossen.\n' +
+      'Gesamt: ' + total + '\n' +
+      'Aktualisiert: ' + updated + '\n' +
+      'Übersprungen: ' + skipped + '\n' +
+      'Fehler: ' + errors
+    );
+  } catch (e) {
+    console.error('backfillBookingItemsFromABDocuments Fehler', e);
+    alert('Backfill fehlgeschlagen: ' + (e && e.message ? e.message : e));
+  }
+}
+
+async function backfillBookingItemsFromOfferDocuments() {
+  const ok = confirm('Sollen bestehende Angebote einmalig in reservierte Buchungen zurückgeschrieben werden? Bestätigte AB-Buchungen werden nicht verändert.');
+  if (!ok) return;
+
+  try {
+    if (typeof sb === 'undefined' || !sb) throw new Error('Supabase ist nicht initialisiert.');
+    if (typeof bookingUpsert !== 'function') throw new Error('bookingUpsert(...) ist nicht verfügbar.');
+    if (typeof buildBookingPreparationNote !== 'function') throw new Error('buildBookingPreparationNote(...) ist nicht verfügbar.');
+    if (typeof loadBookingsFromCloud === 'function') await loadBookingsFromCloud();
+
+    const { data: docs, error } = await sb
+      .from('wm_documents')
+      .select('id, type, number, content')
+      .eq('type', 'angebot');
+
+    if (error) throw error;
+
+    let total = 0;
+    let updated = 0;
+    let skipped = 0;
+    let errors = 0;
+
+    for (const doc of docs) {
+      total += 1;
+
+      try {
+        const content = doc && doc.content ? doc.content : {};
+        const bookingId =
+          content.bookingId ||
+          (content.booking ? (content.booking.bookingId || content.booking.id) : null) ||
+          null;
+
+        const offerNumber = content.nummer || doc.number || null;
+        const items = Array.isArray(content.positionen) ? content.positionen : [];
+
+        if (!bookingId || !items.length) {
+          skipped += 1;
+          continue;
+        }
+
+        const existingBooking =
+          (Array.isArray(currentBookings)
+            ? currentBookings.find(function (b) { return b && b.id === bookingId; })
+            : null) ||
+          (typeof bookingFindById === 'function' ? bookingFindById(bookingId) : null);
+
+        if (!existingBooking) {
+          skipped += 1;
+          continue;
+        }
+
+        const bookingStatus = String(existingBooking.status || '').toLowerCase();
+        if (bookingStatus !== 'reserved') {
+          skipped += 1;
+          continue;
+        }
+
+        const currentRef = String(existingBooking.ref || '').trim().toUpperCase();
+        if (currentRef.startsWith('AB-')) {
+          skipped += 1;
+          continue;
+        }
+
+        const normalizedStartMs =
+          existingBooking.startMs ??
+          (existingBooking.starttime ? new Date(existingBooking.starttime).getTime() : null);
+
+        const normalizedEndMs =
+          existingBooking.endMs ??
+          (existingBooking.endtime ? new Date(existingBooking.endtime).getTime() : null);
+
+        const currentNote = String(existingBooking.note || '').trim();
+        const baseNote = currentNote || 'Reservierung automatisch beim Angebot';
+        const newNote = buildBookingPreparationNote(baseNote, items);
+        const oldNote = currentNote;
+
+        if (oldNote === String(newNote || '').trim()) {
+          skipped += 1;
+          continue;
+        }
+
+        const updatedBooking = {
+          ...existingBooking,
+          id: bookingId,
+          status: 'reserved',
+          ref: existingBooking.ref || offerNumber || null,
+          customer: existingBooking.customer || (content.kunde ? content.kunde.name : null) || null,
+          customerEmail: existingBooking.customerEmail || existingBooking.customeremail || (content.kunde ? content.kunde.email : null) || null,
+          customeremail: existingBooking.customerEmail || existingBooking.customeremail || (content.kunde ? content.kunde.email : null) || null,
+          note: newNote,
+          startMs: normalizedStartMs,
+          endMs: normalizedEndMs
+        };
+
+        await bookingUpsert(updatedBooking);
+        updated += 1;
+      } catch (err) {
+        errors += 1;
+        console.error('Backfill-Fehler bei Angebot:', doc, err);
+      }
+    }
+
+    if (typeof bookingRefreshUI === 'function') await bookingRefreshUI();
+
+    alert(
+      'Angebots-Backfill abgeschlossen.\n' +
+      'Gesamt: ' + total + '\n' +
+      'Aktualisiert: ' + updated + '\n' +
+      'Übersprungen: ' + skipped + '\n' +
+      'Fehler: ' + errors
+    );
+  } catch (e) {
+    console.error('backfillBookingItemsFromOfferDocuments Fehler', e);
+    alert('Angebots-Backfill fehlgeschlagen: ' + (e && e.message ? e.message : e));
   }
 }
 
@@ -1677,11 +1866,11 @@ async function bookingSetStatusAction(id, status, ref = null, customerEmail = nu
     }
 
     try {
-      if (typeof WMKCAL !== "undefined" && typeof WMKCAL.render === "function") {
-        WMKCAL.render();
+      if (typeof WMK_CAL !== "undefined" && typeof WMK_CAL.render === "function") {
+        WMK_CAL.render();
       }
     } catch (e) {
-      console.warn("WMKCAL render Fehler:", e);
+      console.warn("WMK_CAL render Fehler:", e);
     }
 
     return true;
@@ -1719,8 +1908,8 @@ async function bookingDeleteAction(id) {
     await bookingRefreshUI();
 
     try {
-      if (typeof WMKCAL !== "undefined" && typeof WMKCAL.render === "function") {
-        WMKCAL.render();
+      if (typeof WMK_CAL !== "undefined" && typeof WMK_CAL.render === "function") {
+        WMK_CAL.render();
       }
     } catch (e) {
       console.warn("Kalender-Refresh fehlgeschlagen:", e);
@@ -1743,22 +1932,69 @@ async function bookingRefreshUI() {
   const tbody = document.getElementById('booking-list');
   if (!tbody) return;
 
+  const searchInput = document.getElementById('booking-search-input');
+  const activeOnlyCheckbox = document.getElementById('booking-filter-active');
+
+  const searchTerm = searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
+  const showActiveOnly = activeOnlyCheckbox ? !!activeOnlyCheckbox.checked : false;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStartMs = today.getTime();
+
   const all = currentBookings
     .filter(b => {
       if (!b) return false;
-      if (!b.resourceId) return true;
-      return b.resourceId === BOOKING.RESOURCE_ID;
+
+      const bookingResourceId = b.resourceId ?? b.resourceid ?? null;
+      const appResourceId = BOOKING.RESOURCEID ?? BOOKING.RESOURCE_ID ?? null;
+
+      if (!bookingResourceId || !appResourceId) return true;
+      return bookingResourceId === appResourceId;
     })
     .map(b => ({
       ...b,
       customer: b.customer || '',
       ref: b.ref || '',
-      startMs: b.startMs ?? (b.start_time ? new Date(b.start_time).getTime() : null),
-      endMs: b.endMs ?? (b.end_time ? new Date(b.end_time).getTime() : null),
+      note: b.note || '',
+      id: b.id || '',
+      offerValidUntilIso: b.offerValidUntilIso ?? b.offervaliduntil ?? '',
+      startMs: b.startMs
+        ?? (b.starttime ? new Date(b.starttime).getTime() : null)
+        ?? (b.start_time ? new Date(b.start_time).getTime() : null),
+      endMs: b.endMs
+        ?? (b.endtime ? new Date(b.endtime).getTime() : null)
+        ?? (b.end_time ? new Date(b.end_time).getTime() : null),
       status: String(b.status || 'reserved').toLowerCase()
     }))
+    .filter(b => {
+      if (showActiveOnly) {
+        const startMs = Number(b.startMs || 0);
+        const endMs = Number(b.endMs || 0);
+        const relevantMs = endMs || startMs;
+
+        if (!relevantMs || relevantMs < todayStartMs) return false;
+      }
+
+      if (searchTerm) {
+        const searchText = [
+          b.customer,
+          b.ref,
+          b.id,
+          b.status,
+          b.note
+        ].join(' ').toLowerCase();
+
+        if (!searchText.includes(searchTerm)) return false;
+      }
+
+      return true;
+    })
     .slice()
     .sort((a, b) => Number(a.startMs || 0) - Number(b.startMs || 0));
+
+  console.log('DBG bookingRefreshUI currentBookings:', currentBookings);
+  console.log('DBG bookingRefreshUI visible bookings:', all);
 
   if (!all.length) {
     tbody.innerHTML = `<tr><td colspan="6" class="hint">Keine Buchungen gefunden.</td></tr>`;
@@ -1767,33 +2003,44 @@ async function bookingRefreshUI() {
       const tagCls = b.status === 'confirmed' ? 't-conf' : (b.status === 'reserved' ? 't-res' : 't-canc');
       const label = b.status === 'confirmed' ? 'bestätigt' : (b.status === 'reserved' ? 'reserviert' : 'storniert');
       const validIso = b.offerValidUntilIso ? `<br><span class="mono">${escapeHtml(b.offerValidUntilIso)}</span>` : '';
+const itemsText = String(b.note || '');
+const itemsHtml = itemsText
+  .replace('--- BESTELLUNG ---', '')
+  .replace('--- ENDE BESTELLUNG ---', '')
+  .trim()
+  .split('\n')
+  .map(line => line.trim())
+  .filter(line => line && line !== '---')
+  .map(line => escapeHtml(line))
+  .join('<br>');
+
       return `
         <tr>
           <td><span class="tag ${tagCls}">${label}</span></td>
           <td><span class="mono">${fmtDT(b.startMs)}</span><br>${fmtDT(b.endMs)}</td>
           <td>${escapeHtml(b.customer)}</td>
-          <td>${escapeHtml(b.ref)} ${validIso}</td>
+          <td>${escapeHtml(b.ref)}${validIso}</td>
           <td class="mono">${escapeHtml(b.id)}</td>
-          <td style="min-width:520px; vertical-align:top; overflow:visible;">
-            <div style="display:flex; flex-direction:column; gap:10px; width:100%; max-width:520px;">
-              <button class="btn btn-muted" style="width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" type="button" onclick="bookingEditAction('${escapeHtml(b.id)}')">Bearbeiten</button>
-              <button class="btn btn-secondary" style="width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" type="button" onclick="bookingEditInOffer('${escapeHtml(b.id)}')">Im Angebot bearbeiten</button>
-              <button class="btn btn-secondary" style="width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" type="button" onclick="bookingSetStatusAction('${escapeHtml(b.id)}', 'confirmed', null)">Bestätigen</button>
-              <button class="btn btn-danger" style="width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" type="button" onclick="bookingSetStatusAction('${escapeHtml(b.id)}', 'cancelled', null)">Stornieren</button>
-              <button class="btn btn-danger" style="width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" type="button" onclick="bookingDeleteAction('${escapeHtml(b.id)}')">Löschen</button>
-            </div>
-          </td>
-        </tr>
+	  <td>${itemsHtml || '<span class="hint">-</span>'}</td>
+          <td class="booking-actions-cell">
+  <div class="booking-actions-col">
+    <button class="btn btn-muted booking-action-btn" type="button" onclick="bookingEditAction('${escapeHtml(b.id)}')">Bearbeiten</button>
+    <button class="btn btn-secondary booking-action-btn" type="button" onclick="bookingEditInOffer('${escapeHtml(b.id)}')">Im Angebot bearbeiten</button>
+    <button class="btn btn-secondary booking-action-btn" type="button" onclick="bookingSetStatusAction('${escapeHtml(b.id)}', 'confirmed', null)">Bestätigen</button>
+    <button class="btn btn-danger booking-action-btn" type="button" onclick="bookingSetStatusAction('${escapeHtml(b.id)}', 'cancelled', null)">Stornieren</button>
+    <button class="btn btn-danger booking-action-btn" type="button" onclick="bookingDeleteAction('${escapeHtml(b.id)}')">Löschen</button>
+  </div>
+</td>
       `;
     }).join('');
   }
 
   try {
-    if (typeof WMKCAL !== 'undefined' && typeof WMKCAL.render === 'function') {
-      WMKCAL.render();
+    if (typeof WMK_CAL !== 'undefined' && typeof WMK_CAL.render === 'function') {
+      WMK_CAL.render();
     }
   } catch (e) {
-    console.warn("WMKCAL render Fehler:", e);
+    console.warn("WMK_CAL render Fehler:", e);
   }
 }
 
@@ -1942,20 +2189,39 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 
   const abDep = document.getElementById("auftragsbestaetigung-anzahlung-betrag");
-  if (abDep) abDep.addEventListener("input", () => { abDepositAuto = false; });
+if (abDep) {
+  abDep.addEventListener("input", () => { abDepositAuto = false; });
+}
 
-  const abItems = document.getElementById("auftragsbestaetigung-items");
-  if (abItems) {
-    abItems.addEventListener("input", (ev) => {
-      if (!abDepositAuto) return;
-      const id = ev && ev.target ? ev.target.id : "";
-      if (id === "auftragsbestaetigung-qty-0" || id === "auftragsbestaetigung-price-0" || id === "auftragsbestaetigung-tax-0") {
-        applyAutoDepositFromAbFirstRow();
-      }
-    });
-  }
-});
+const abDep19 = document.getElementById("auftragsbestaetigung-anzahlung-betrag-19");
+if (abDep19) {
+  abDep19.addEventListener("input", () => { abDepositAuto = false; });
+}
 
+const abDep7 = document.getElementById("auftragsbestaetigung-anzahlung-betrag-7");
+if (abDep7) {
+  abDep7.addEventListener("input", () => { abDepositAuto = false; });
+}
+
+const abItems = document.getElementById("auftragsbestaetigung-items");
+if (abItems) {
+  abItems.addEventListener("input", (ev) => {
+    if (!abDepositAuto) return;
+
+    const target = ev && ev.target ? ev.target : null;
+    if (!target) return;
+
+    const isRelevantField =
+      target.classList.contains("item-quantity") ||
+      target.classList.contains("item-price") ||
+      target.classList.contains("item-tax") ||
+      /^auftragsbestaetigung-(qty|price|tax)-\d+$/.test(target.id || "");
+
+    if (isRelevantField) {
+      applyAutoDepositFromAbFirstRow();
+    }
+  });
+}
 
   const angebotJsonFileAb = document.getElementById("angebot-json-file-ab");
   if (angebotJsonFileAb) {
@@ -1975,6 +2241,7 @@ document.addEventListener("DOMContentLoaded", function() {
       event.target.value = "";
     });
   }
+});
 
 function setIfExists(id, value) {
   const el = document.getElementById(id);
@@ -1990,21 +2257,6 @@ function addDaysToISODate(isoDate, days) {
   if (isNaN(d.getTime())) return "";
   d.setDate(d.getDate() + days);
   return d.toISOString().split("T")[0];
-}
-
-/** =========================
- *  TABS
- *  ========================= */
-function switchTab(type, ev) {
-  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-  if (ev && ev.target) ev.target.classList.add("active");
-
-  document.querySelectorAll(".document-panel").forEach(p => p.classList.remove("active"));
-  const panel = document.getElementById(type + "-panel");
-  if (panel) panel.classList.add("active");
-
-  if (type === "buchungen") bookingRefreshUI();
-  if (type === "kalender") { setTimeout(() => { try { WMK_CAL.render(); } catch(e) {} }, 0); }
 }
 
 /** =========================
@@ -2122,31 +2374,127 @@ function removeItem(type, itemId) {
  *  AB: AUTO ANZAHLUNG
  *  ========================= */
 function applyAutoDepositFromOfferFirstPosition(firstPos) {
-  if (!firstPos) return;
+  const positionen = Array.isArray(firstPos)
+    ? firstPos
+    : (firstPos ? [firstPos] : []);
 
-  const qty = parseFloat(firstPos.menge) || 0;
-  const price = parseFloat(firstPos.einzelpreisBrutto) || 0;
-  const tax = (firstPos.mwst != null) ? (parseFloat(firstPos.mwst) || 0) : 19;
+  if (!positionen.length) {
+    setIfExists("auftragsbestaetigung-anzahlung-betrag", "0.00");
+    setIfExists("auftragsbestaetigung-anzahlung-mwst", "19");
+    setIfExists("auftragsbestaetigung-anzahlung-betrag-19", "0.00");
+    setIfExists("auftragsbestaetigung-anzahlung-betrag-7", "0.00");
+    return;
+  }
 
-  const firstLineBrutto = qty * price;
-  const deposit = firstLineBrutto * DEPOSIT_RATE;
+  let brutto19 = 0;
+  let brutto7 = 0;
+  let bruttoSonstige = 0;
 
-  setIfExists("auftragsbestaetigung-anzahlung-betrag", isFinite(deposit) ? deposit.toFixed(2) : "0.00");
-  setIfExists("auftragsbestaetigung-anzahlung-mwst", isFinite(tax) ? tax : 19);
+  positionen.forEach(function(pos) {
+    const qty = parseFloat(pos && pos.menge) || 0;
+    const price = parseFloat(pos && pos.einzelpreisBrutto) || 0;
+    const mwst = (pos && pos.mwst != null) ? (parseFloat(pos.mwst) || 0) : 19;
+    const lineBrutto = qty * price;
+
+    if (!isFinite(lineBrutto) || lineBrutto === 0) return;
+
+    if (mwst === 19) {
+      brutto19 += lineBrutto;
+    } else if (mwst === 7) {
+      brutto7 += lineBrutto;
+    } else {
+      bruttoSonstige += lineBrutto;
+    }
+  });
+
+  if (bruttoSonstige > 0) {
+    brutto19 += bruttoSonstige;
+  }
+
+  const deposit19 = brutto19 * DEPOSIT_RATE;
+  const deposit7 = brutto7 * DEPOSIT_RATE;
+  const depositTotal = deposit19 + deposit7;
+
+  setIfExists(
+    "auftragsbestaetigung-anzahlung-betrag",
+    isFinite(depositTotal) ? depositTotal.toFixed(2) : "0.00"
+  );
+
+  setIfExists("auftragsbestaetigung-anzahlung-mwst", brutto7 > 0 ? "19/7" : "19");
+  setIfExists(
+    "auftragsbestaetigung-anzahlung-betrag-19",
+    isFinite(deposit19) ? deposit19.toFixed(2) : "0.00"
+  );
+  setIfExists(
+    "auftragsbestaetigung-anzahlung-betrag-7",
+    isFinite(deposit7) ? deposit7.toFixed(2) : "0.00"
+  );
 }
+
 function applyAutoDepositFromAbFirstRow() {
-  const qtyEl = document.getElementById("auftragsbestaetigung-qty-0");
-  const priceEl = document.getElementById("auftragsbestaetigung-price-0");
-  const taxEl = document.getElementById("auftragsbestaetigung-tax-0");
-  if (!qtyEl || !priceEl) return;
+  const depositRate = 1 / 3;
 
-  const qty = parseFloat(qtyEl.value) || 0;
-  const price = parseFloat(priceEl.value) || 0;
-  const tax = taxEl ? (parseFloat(taxEl.value) || 19) : 19;
+  const rows = Array.from(
+    document.querySelectorAll('#auftragsbestaetigung-items .item-row')
+  );
 
-  const deposit = (qty * price) * DEPOSIT_RATE;
-  setIfExists("auftragsbestaetigung-anzahlung-betrag", isFinite(deposit) ? deposit.toFixed(2) : "0.00");
-  setIfExists("auftragsbestaetigung-anzahlung-mwst", isFinite(tax) ? tax : 19);
+  if (!rows.length) {
+    setIfExists("auftragsbestaetigung-anzahlung-betrag", "0.00");
+    setIfExists("auftragsbestaetigung-anzahlung-mwst", "19");
+    setIfExists("auftragsbestaetigung-anzahlung-betrag-19", "0.00");
+    setIfExists("auftragsbestaetigung-anzahlung-betrag-7", "0.00");
+    return;
+  }
+
+  let brutto19 = 0;
+  let brutto7 = 0;
+  let bruttoSonstige = 0;
+
+  rows.forEach(function(row) {
+    const qtyEl = row.querySelector('.item-quantity');
+    const priceEl = row.querySelector('.item-price');
+    const taxEl = row.querySelector('.item-tax');
+
+    const qty = qtyEl ? (parseFloat(qtyEl.value) || 0) : 0;
+    const price = priceEl ? (parseFloat(priceEl.value) || 0) : 0;
+    const mwst = taxEl ? (parseFloat(taxEl.value) || 19) : 19;
+    const lineBrutto = qty * price;
+
+    if (!isFinite(lineBrutto) || lineBrutto === 0) return;
+
+    if (mwst === 19) {
+      brutto19 += lineBrutto;
+    } else if (mwst === 7) {
+      brutto7 += lineBrutto;
+    } else {
+      bruttoSonstige += lineBrutto;
+    }
+  });
+
+  if (bruttoSonstige > 0) {
+    brutto19 += bruttoSonstige;
+  }
+
+  const deposit19 = brutto19 * depositRate;
+  const deposit7 = brutto7 * depositRate;
+  const depositTotal = deposit19 + deposit7;
+
+  setIfExists(
+    "auftragsbestaetigung-anzahlung-betrag",
+    isFinite(depositTotal) ? depositTotal.toFixed(2) : "0.00"
+  );
+  setIfExists(
+    "auftragsbestaetigung-anzahlung-mwst",
+    brutto7 > 0 ? "19/7" : "19"
+  );
+  setIfExists(
+    "auftragsbestaetigung-anzahlung-betrag-19",
+    isFinite(deposit19) ? deposit19.toFixed(2) : "0.00"
+  );
+  setIfExists(
+    "auftragsbestaetigung-anzahlung-betrag-7",
+    isFinite(deposit7) ? deposit7.toFixed(2) : "0.00"
+  );
 }
 
 /** =========================
@@ -2317,9 +2665,14 @@ async function ensureOfferReservation({ reason = "save", forceCheckMessage = fal
   const customer = getVal("angebot-kunde-name").trim();
   const customer_email = getVal("angebot-kunde-email").trim();
   const ref = getVal("angebot-nummer").trim();
-  const note = reason === "manual"
-    ? "Reservierung manuell aus Angebot"
-    : "Reservierung automatisch beim Angebot";
+  const baseNote = reason === "manual"
+  ? "Reservierung manuell aus Angebot"
+  : "Reservierung automatisch beim Angebot";
+
+const note = joinBookingNoteParts(
+  baseNote,
+  buildBookingItemsNote("angebot")
+);
 
   console.log("[DBG ensureOfferReservation] payload", {
     id,
@@ -2436,11 +2789,43 @@ async function ensureBookingConfirmedForAB({ mode = "preview" } = {}) {
     return false;
   }
 
-  const customerEmail = (getVal("auftragsbestaetigung-kunde-email") || "").trim();
-  const ok = await bookingSetStatus(bid, "confirmed", abNr, customerEmail);
-  if (!ok) return false;
+  const customerEmail = getVal('auftragsbestaetigung-kunde-email').trim();
+  const abItems = collectItems('auftragsbestaetigung');
+  const existingBooking = bookingFindById(bid);
 
-  bookingRefreshUI();
+  if (!existingBooking) {
+    console.warn('AB-Buchung nicht gefunden:', bid);
+    return false;
+  }
+
+  const normalizedStartMs =
+    existingBooking.startMs ??
+    (existingBooking.start_time ? new Date(existingBooking.start_time).getTime() : null) ??
+    (existingBooking.starttime ? new Date(existingBooking.starttime).getTime() : null);
+
+  const normalizedEndMs =
+    existingBooking.endMs ??
+    (existingBooking.end_time ? new Date(existingBooking.end_time).getTime() : null) ??
+    (existingBooking.endtime ? new Date(existingBooking.endtime).getTime() : null);
+
+  const updatedBooking = {
+    ...existingBooking,
+    id: bid,
+    status: 'confirmed',
+    ref: abNr,
+    customerEmail: customerEmail,
+    customer_email: customerEmail,
+    note: buildBookingPreparationNote('', abItems),
+    startMs: normalizedStartMs,
+    endMs: normalizedEndMs
+  };
+
+  console.log('[DBG AB] bookingId', bid);
+  console.log('[DBG AB] abItems', abItems);
+  console.log('[DBG AB] updatedBooking.note', updatedBooking.note);
+
+  await bookingUpsert(updatedBooking);
+  await bookingRefreshUI();
   return true;
 }
 
@@ -2466,6 +2851,83 @@ function collectItems(type) {
     positionen.push({ beschreibung, menge, einzelpreisBrutto, mwst });
   });
   return positionen;
+}
+
+function joinBookingNoteParts() {
+  const parts = Array.from(arguments)
+    .map(function (part) {
+      return String(part || '').trim();
+    })
+    .filter(Boolean);
+
+  return parts.join('\n\n');
+}
+
+function buildBookingItemsNote(type) {
+  const items = collectItems(type);
+  if (!Array.isArray(items) || !items.length) {
+    return '';
+  }
+
+  const lines = items
+    .filter(function (item) {
+      return item && String(item.beschreibung || '').trim();
+    })
+    .map(function (item) {
+      const qty = Number(item.menge || 0);
+      const desc = String(item.beschreibung || '').trim();
+      return (qty > 0 ? qty + 'x ' : '') + desc;
+    });
+
+  if (!lines.length) {
+    return '';
+  }
+
+  return 'Artikel / Leistung:\n' + lines.join('\n');
+}
+
+function buildBookingItemsText(items) {
+  if (!Array.isArray(items) || !items.length) return '';
+  return items
+    .filter(function (item) {
+      return item && String(item.beschreibung || '').trim();
+    })
+    .map(function (item) {
+      const beschreibung = String(item.beschreibung || '').trim();
+      const menge = Number(item.menge || 0);
+      const qtyText = Number.isFinite(menge) && menge !== 1 ? ' x ' + menge : '';
+      return beschreibung + qtyText;
+    })
+    .join('\n');
+}
+
+function buildBookingPreparationNote(baseNote, items) {
+  const originalNote = String(baseNote || '').trim();
+  const itemsText = buildBookingItemsText(items);
+
+  if (!itemsText) return originalNote;
+
+  const markerStart = '--- BESTELLUNG ---';
+  const markerEnd = '--- ENDE BESTELLUNG ---';
+
+  const escapedStart = markerStart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escapedEnd = markerEnd.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  const cleanedBase = originalNote
+    ? originalNote.replace(
+        new RegExp(escapedStart + '[\\s\\S]*?' + escapedEnd, 'g'),
+        ''
+      ).trim()
+    : '';
+
+  const orderBlock =
+    markerStart + '\n' +
+    itemsText + '\n' +
+    markerEnd;
+
+  return cleanedBase
+    ? cleanedBase + '\n\n' + orderBlock
+    : orderBlock;
 }
 
 function buildAngebotJson() {
@@ -2518,13 +2980,15 @@ function buildAuftragsbestaetigungJson() {
     positionen: collectItems("auftragsbestaetigung"),
     anzahlung: {
       beschreibung: "Anzahlung",
-      betragBrutto: parseFloat(getVal("auftragsbestaetigung-anzahlung-betrag")) || 0,
-      mwst: parseFloat(getVal("auftragsbestaetigung-anzahlung-mwst")) || 0,
-      faellig: getVal("auftragsbestaetigung-anzahlung-faellig"),
-      zahlungszielTage: 14,
-      berechnungsbasis: "33,333333333333333% der 1. Position (Brutto, inkl. Menge)",
-      autoBerechnungAktiv: abDepositAuto
-    },
+betragBrutto: parseFloat(getVal("auftragsbestaetigung-anzahlung-betrag")) || 0,
+mwst: String(getVal("auftragsbestaetigung-anzahlung-mwst") || "19"),
+betragBrutto19: parseFloat(getVal("auftragsbestaetigung-anzahlung-betrag-19")) || 0,
+betragBrutto7: parseFloat(getVal("auftragsbestaetigung-anzahlung-betrag-7")) || 0,
+faellig: getVal("auftragsbestaetigung-anzahlung-faellig"),
+zahlungszielTage: 14,
+berechnungsbasis: "33,333333333333333 % aller Positionen brutto, getrennt nach 19 % und 7 %",
+autoBerechnungAktiv: abDepositAuto
+},
     notizen: getVal("auftragsbestaetigung-notizen")
   };
 }
@@ -2548,11 +3012,12 @@ function buildRechnungJson() {
     referenzAngebot: getVal('rechnung-referenz-angebot'),
     positionen: collectItems('rechnung'),
     anzahlung: {
-      betragBrutto: parseFloat(getVal('rechnung-anzahlung-betrag') || 0),
-      mwst: parseFloat(getVal('rechnung-anzahlung-mwst') || 0),
-      faellig: getVal('rechnung-anzahlung-faellig'),
-      inTabelle: getVal('rechnung-anzahlung-in-tabelle') || 'ja'
-    },
+  betragBrutto: parseFloat(getVal('rechnung-anzahlung-betrag')) || 0,
+  mwst: String(getVal('rechnung-anzahlung-mwst') || '19'),
+  faellig: getVal('rechnung-anzahlung-faellig'),
+  inTabelle: getVal('rechnung-anzahlung-in-tabelle') || 'ja',
+  manuellGeaendert: true
+},
     notizen: getVal('rechnung-notizen')
   };
 }
@@ -4211,9 +4676,11 @@ function fuelleRechnungAusAuftragsbestaetigung(ab) {
  *  ========================= */
 async function bookingCreateFromForm(status, editIdOverride = null) {
   const msgEl = document.getElementById("booking-msg");
-  const customer = (getVal("booking-customer") || "").trim();
-  const ref = (getVal("booking-ref") || "").trim();
-  const note = (getVal("booking-note") || "").trim();
+  const customer = getVal('booking-customer').trim();
+  const ref = getVal('booking-ref').trim();
+  const baseNote = getVal('booking-note').trim();
+  const itemsNote = buildBookingItemsNote('angebot') || buildBookingItemsNote('auftragsbestaetigung') || '';
+  const note = mergeBookingNote(baseNote, itemsNote);
 
   const startD = dtLocalToDate(getVal("booking-start"));
   const endD = dtLocalToDate(getVal("booking-end"));
@@ -4322,6 +4789,89 @@ async function savePublicCalendarToSupabase() {
   }
 }
 
+function bookingExportExcel() {
+  try {
+    if (typeof XLSX === 'undefined') {
+      alert('Excel-Export ist nicht verfügbar, weil die XLSX-Bibliothek nicht geladen wurde.');
+      return;
+    }
+
+    const rows = (Array.isArray(currentBookings) ? currentBookings : [])
+      .filter(b => {
+        if (!b) return false;
+        const bookingResourceId = b.resourceId ?? b.resourceid ?? null;
+        const appResourceId = BOOKING?.RESOURCEID ?? null;
+        if (!bookingResourceId || !appResourceId) return true;
+        return bookingResourceId === appResourceId;
+      })
+      .map(b => {
+        const startMs = b.startMs ?? (b.starttime ? new Date(b.starttime).getTime() : null);
+        const endMs = b.endMs ?? (b.endtime ? new Date(b.endtime).getTime() : null);
+        const rawNote = String(b.note || '');
+
+        const artikelLeistung = rawNote
+          .replace('--- BESTELLUNG ---', '')
+          .replace('--- ENDE BESTELLUNG ---', '')
+          .split('\n')
+          .map(line => String(line).trim())
+          .filter(line => line && line !== '---')
+          .join(' | ');
+
+        return {
+          _sortStartMs: Number(startMs || 0),
+          Status:
+            String(b.status || '').toLowerCase() === 'confirmed' ? 'bestätigt' :
+            String(b.status || '').toLowerCase() === 'reserved' ? 'reserviert' :
+            String(b.status || '').toLowerCase() === 'cancelled' ? 'storniert' :
+            String(b.status || ''),
+          Start: startMs ? fmtDT(startMs) : '',
+          Ende: endMs ? fmtDT(endMs) : '',
+          Kunde: String(b.customer || ''),
+          Referenz: String(b.ref || ''),
+          'Gültig bis': String(b.offerValidUntilIso || b.offervaliduntil || ''),
+          'Artikel / Leistung': artikelLeistung,
+          Notiz: rawNote,
+          ID: String(b.id || '')
+        };
+      })
+      .sort((a, b) => a._sortStartMs - b._sortStartMs)
+      .map(({ _sortStartMs, ...row }) => row);
+
+    if (!rows.length) {
+      alert('Keine Buchungen zum Exportieren vorhanden.');
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Buchungen');
+
+    ws['!cols'] = [
+      { wch: 14 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 24 },
+      { wch: 18 },
+      { wch: 14 },
+      { wch: 50 },
+      { wch: 60 },
+      { wch: 40 }
+    ];
+
+    const now = new Date();
+    const filename =
+      'buchungen-' +
+      now.getFullYear() + '-' +
+      String(now.getMonth() + 1).padStart(2, '0') + '-' +
+      String(now.getDate()).padStart(2, '0') +
+      '.xlsx';
+
+    XLSX.writeFile(wb, filename);
+  } catch (e) {
+    console.error('bookingExportExcel Fehler', e);
+    alert('Excel-Export fehlgeschlagen: ' + (e && e.message ? e.message : e));
+  }
+}
 
 function exportPublicCalendarJson() {
   // Ablauf anwenden, damit abgelaufene Reservierungen nicht mehr "blocken"
@@ -4758,6 +5308,19 @@ function formatQty(n) {
 
 function printDocument() { window.print(); }
 
+window.onerror = function(message, source, lineno, colno, error) {
+  console.error('GLOBAL ERROR:', { message, source, lineno, colno, error });
+  const box = document.getElementById('runtime-error');
+  const text = document.getElementById('runtime-error-text');
+  if (box) box.style.display = 'block';
+  if (text) {
+    text.textContent =
+      'message: ' + message + '\n' +
+      'source: ' + source + '\n' +
+      'line: ' + lineno + ':' + colno + '\n' +
+      'stack:\n' + (error && error.stack ? error.stack : '(kein stack)');
+  }
+};
 
 /* WMK_CAL_POPUP */
 const WMK_CAL = (function(){
@@ -4923,7 +5486,29 @@ const WMK_CAL = (function(){
     if(el('wm-modal-range')) el('wm-modal-range').textContent = fmtDT(b.startMs) + ' – ' + fmtDT(b.endMs);
     if(el('wm-modal-customer')) el('wm-modal-customer').textContent = String(b.customer||'');
     if(el('wm-modal-ref')) el('wm-modal-ref').textContent = String(b.ref||'');
-    if(el('wm-modal-note')) el('wm-modal-note').textContent = String(b.note||'');
+    
+    // Wir rufen hier die Funktionen auf, die weiter unten global definiert sind
+    const noteEl = el('wm-modal-note');
+    const itemsEl = el('wm-modal-items');
+    
+    const plainNote = typeof bookingBuildPlainNote === 'function' ? bookingBuildPlainNote(b.note) : String(b.note||'');
+    const itemsHtml = typeof bookingItemsPreviewHtml === 'function' ? bookingItemsPreviewHtml(b.note) : '';
+    
+    if (itemsEl) itemsEl.innerHTML = itemsHtml;
+    
+    const noteLabelEl = noteEl ? noteEl.previousElementSibling : null;
+    if (noteEl) {
+      if (plainNote) {
+        noteEl.textContent = plainNote;
+        noteEl.style.display = '';
+        if (noteLabelEl) noteLabelEl.style.display = '';
+      } else {
+        noteEl.textContent = '';
+        noteEl.style.display = 'none';
+        if (noteLabelEl) noteLabelEl.style.display = 'none';
+      }
+    }
+
     if(el('wm-modal-id')) el('wm-modal-id').textContent = String(b.id||'');
 
     const m=document.getElementById('wm-modal');
@@ -5012,54 +5597,51 @@ const WMK_CAL = (function(){
     if(modal) modal.classList.add('open');
   }
 
-  // --- Actions (mit bestehenden Funktionen) ---
+  // --- Actions ---
   async function setConfirmed() {
-  if (!STATE.modalId) return;
-  try {
-    if (typeof bookingSetStatusAction === 'function') {
-      await bookingSetStatusAction(STATE.modalId, 'confirmed');
+    if (!STATE.modalId) return;
+    try {
+      if (typeof bookingSetStatusAction === 'function') {
+        await bookingSetStatusAction(STATE.modalId, 'confirmed');
+      }
+      if(typeof bookingRefreshUI === 'function') await bookingRefreshUI();
+      if(typeof updateOfferBookingCheck === 'function') updateOfferBookingCheck(false);
+    } catch (e) {
+      console.error("setConfirmed Fehler:", e);
     }
-    await bookingRefreshUI();
-    updateOfferBookingCheck(false);
-    try { if (typeof WMKCAL !== 'undefined' && typeof WMKCAL.render === 'function') WMKCAL.render(); } catch (e) {}
-  } catch (e) {
-    console.error("setConfirmed Fehler:", e);
+    render();
+    modalClose();
   }
-  render();
-  modalClose();
-}
 
-async function cancelBooking() {
-  if (!STATE.modalId) return;
-  try {
-    if (typeof bookingSetStatusAction === 'function') {
-      await bookingSetStatusAction(STATE.modalId, 'cancelled');
+  async function cancelBooking() {
+    if (!STATE.modalId) return;
+    try {
+      if (typeof bookingSetStatusAction === 'function') {
+        await bookingSetStatusAction(STATE.modalId, 'cancelled');
+      }
+      if(typeof bookingRefreshUI === 'function') await bookingRefreshUI();
+      if(typeof updateOfferBookingCheck === 'function') updateOfferBookingCheck(false);
+    } catch (e) {
+      console.error("cancelBooking Fehler:", e);
     }
-    await bookingRefreshUI();
-    updateOfferBookingCheck(false);
-    try { if (typeof WMKCAL !== 'undefined' && typeof WMKCAL.render === 'function') WMKCAL.render(); } catch (e) {}
-  } catch (e) {
-    console.error("cancelBooking Fehler:", e);
+    render();
+    modalClose();
   }
-  render();
-  modalClose();
-}
 
-async function deleteBooking() {
-  if (!STATE.modalId) return;
-  try {
-    if (typeof bookingDeleteAction === 'function') {
-      await bookingDeleteAction(STATE.modalId);
+  async function deleteBooking() {
+    if (!STATE.modalId) return;
+    try {
+      if (typeof bookingDeleteAction === 'function') {
+        await bookingDeleteAction(STATE.modalId);
+      }
+      if(typeof bookingRefreshUI === 'function') await bookingRefreshUI();
+      if(typeof updateOfferBookingCheck === 'function') updateOfferBookingCheck(false);
+    } catch (e) {
+      console.error("deleteBooking Fehler:", e);
     }
-    await bookingRefreshUI();
-    updateOfferBookingCheck(false);
-    try { if (typeof WMKCAL !== 'undefined' && typeof WMKCAL.render === 'function') WMKCAL.render(); } catch (e) {}
-  } catch (e) {
-    console.error("deleteBooking Fehler:", e);
+    render();
+    modalClose();
   }
-  render();
-  modalClose();
-}
 
   function editInBuchungen(){
     if(!STATE.modalId) return;
@@ -5067,7 +5649,7 @@ async function deleteBooking() {
     if(!b) return;
 
     const tab = Array.from(document.querySelectorAll('.tab')).find(t => (t.getAttribute('onclick')||'').includes("'buchungen'"));
-    switchTab('buchungen', tab ? {target:tab} : null);
+    if(typeof switchTab === 'function') switchTab('buchungen', tab ? {target:tab} : null);
 
     const toDT=(ms)=>{ const d=new Date(Number(ms)); const pad=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
     if(typeof setIfExists==='function'){
@@ -5363,6 +5945,25 @@ async function deleteBooking() {
     wrap.appendChild(tbl);
   }
 
+function render(){
+  console.log('DBG render() START');
+  console.log('DBG STATE:', STATE);
+  console.log('DBG selectedIso:', STATE && STATE.selectedIso);
+  console.log('DBG view:', STATE && STATE.view);
+
+  initOnce();
+  updateViewButtons();
+
+  const wrap = document.getElementById('wm-cal-native');
+  console.log('DBG render wrap:', wrap);
+
+  if (STATE.view === 'month') return renderMonth();
+  if (STATE.view === 'week') return renderWeek();
+  if (STATE.view === 'day') return renderDay();
+  if (STATE.view === 'list') return renderListMonth();
+  return renderMonth();
+}
+
   function render(){
     initOnce();
     updateViewButtons();
@@ -5373,7 +5974,6 @@ async function deleteBooking() {
     return renderMonth();
   }
 
-  // --- Navigation ---
   function shiftSelected(days){
     const d=dateFromIso(STATE.selectedIso) || new Date(2026,0,1);
     selectIso(isoFromDate(addDays(d,days)));
@@ -5422,9 +6022,136 @@ async function deleteBooking() {
   };
 })();
 
-// Auto-Start (FÜGE HINZU)
+window.WMK_CAL = WMK_CAL;
+window.WMKCAL = WMK_CAL;
 
+// ---------------------------------------------------------
+// Diese Hilfsfunktionen brauchen keinen Kalender-internen
+// Status, weshalb sie bedenkenlos global bleiben dürfen.
+// ---------------------------------------------------------
 
+function bookingExtractOrderBlock(note) {
+  const raw = String(note || '').replace(/\r/g, '').trim();
+  if (!raw) return { items: [], plain: raw };
+
+  const startMarker = '--- BESTELLUNG ---';
+  const endMarker = '--- ENDE BESTELLUNG ---';
+
+  const startIndex = raw.indexOf(startMarker);
+  const endIndex = raw.indexOf(endMarker);
+
+  if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) {
+    return { items: [], plain: raw };
+  }
+
+  const before = raw.slice(0, startIndex).trim();
+  const inside = raw
+    .slice(startIndex + startMarker.length, endIndex)
+    .trim();
+  const after = raw
+    .slice(endIndex + endMarker.length)
+    .trim();
+
+  const plain = [before, after].filter(Boolean).join('\n\n').trim();
+
+  const items = inside
+    .split('\n')
+    .map(line => String(line || '').trim())
+    .filter(Boolean);
+
+  return { items, plain };
+}
+
+function bookingBuildPlainNote(note){
+  let raw = String(note || '').replace(/\r/g, '').trim();
+  if (!raw) return '';
+
+  raw = raw.replace(/---\s*BESTELLUNG\s*---[\s\S]*?---\s*ENDE\s+BESTELLUNG\s*---/gi, '').trim();
+  if (!raw) return '';
+
+  const lines = raw
+    .split('\n')
+    .map(function(line){ return String(line || '').trim(); })
+    .filter(Boolean);
+
+  const cleaned = [];
+  let skipItems = false;
+
+  lines.forEach(function(line){
+    const normalized = line.toLowerCase();
+
+    if (
+      normalized === 'artikel' ||
+      normalized === 'artikel / leistung' ||
+      normalized === 'leistung' ||
+      normalized === 'leistungen' ||
+      normalized === 'artikel / leistungen'
+    ) {
+      skipItems = true;
+      return;
+    }
+
+    if (skipItems) {
+      if (/^(hinweis|notiz|intern|kundenreferenz|status|zeitraum|id)\b/i.test(line)) {
+        skipItems = false;
+        cleaned.push(line);
+        return;
+      }
+
+      if (/^[-•*]/.test(line)) return;
+      if (/ x \d+$/i.test(line)) return;
+      return;
+    }
+
+    cleaned.push(line);
+  });
+
+  return cleaned.join('\n').trim();
+}
+
+function bookingItemsPreviewHtml(note) {
+  const raw = String(note || '').replace(/\r/g, '').trim();
+  if (!raw) {
+    return '<span class="hint">Keine Artikelinformationen hinterlegt.</span>';
+  }
+
+  let items = [];
+
+  if (typeof bookingExtractOrderBlock === 'function') {
+    const parsed = bookingExtractOrderBlock(raw);
+    if (parsed && Array.isArray(parsed.items)) {
+      items = parsed.items.filter(Boolean);
+    }
+  }
+
+  if (!items.length && typeof bookingExtractPreparationLines === 'function') {
+    items = bookingExtractPreparationLines(raw);
+  }
+
+  if (!items.length) {
+    return '<span class="hint">Keine Artikelinformationen hinterlegt.</span>';
+  }
+
+  return '<div style="display:flex;flex-direction:column;gap:6px;">' +
+    items.map(function(item) {
+      return '<div style="padding:8px 10px;border:1px solid #e6edf6;border-radius:8px;background:#f7f9fc;">' +
+        (typeof escapeHtml === 'function' ? escapeHtml(item) : item) +
+      '</div>';
+    }).join('') +
+    '</div>';
+}
+
+// Auto-Start
+document.addEventListener('DOMContentLoaded', function () {
+  const kalenderPanel = document.getElementById('kalender-panel');
+  if (kalenderPanel && kalenderPanel.classList.contains('active')) {
+    setTimeout(function () {
+      if (window.WMKCAL && typeof window.WMKCAL.render === 'function') {
+        window.WMKCAL.render();
+      }
+    }, 150);
+  }
+});
 
 // ===== SUPABASE & AUTH & INIT =====
 var sb;
@@ -5475,53 +6202,97 @@ window.addEventListener('load', async () => {
     if (firstTab && typeof switchTab === 'function') switchTab(firstTab, 'angebot-panel');
 });
 
-async function login() {
-  const emailEl = document.getElementById('loginEmail');
-  const passEl = document.getElementById('loginPassword');
-  const statusEl = document.getElementById('authStatus');
-  if (!emailEl || !passEl) return;
-  if (!emailEl.value || !passEl.value) {
-    statusEl.innerHTML = '<span style="color:#c62828;font-weight:bold;">Bitte E-Mail und Passwort eingeben.</span>';
-    return;
-  }
-  statusEl.innerHTML = 'Prüfe Daten...';
-  try {
-      const { data, error } = await sb.auth.signInWithPassword({ email: emailEl.value, password: passEl.value });
-      if (error) statusEl.innerHTML = `<span style="color:#c62828;font-weight:bold;">Fehler: ${error.message}</span>`;
-      else statusEl.innerHTML = '<span style="color:#2e7d32;font-weight:bold;">Erfolgreich!</span>';
-  } catch (err) { statusEl.innerHTML = `<span style="color:#c62828;font-weight:bold;">Netzwerk-Fehler!</span>`; }
-}
+window.WMK_CAL = window.WMK_CAL || window.WMKCAL || null;
+window.WMKCAL = window.WMKCAL || window.WMK_CAL || null;
 
-async function logout() {
-  if (!confirm("Möchtest du dich wirklich abmelden?")) return;
-  try {
-    if (sb) await sb.auth.signOut();
-    localStorage.removeItem('supabase.auth.token');
-    sessionStorage.clear();
-    const overlay = document.getElementById('gateOverlay');
-    if (overlay) overlay.style.setProperty('display', 'flex', 'important');
-    document.getElementById('loginPassword').value = '';
-    document.getElementById('authStatus').innerText = 'Abgemeldet.';
-  } catch(e) { console.error("Logout Fehler", e); }
-}
-
-function switchTab(a, b) {
+function switchTab(a, b){
   let clickedEl = null;
   let targetId = null;
+
   if (typeof a === 'string') {
     targetId = a.endsWith('-panel') ? a : (a + '-panel');
     if (b && b.target) clickedEl = b.target;
   } else {
     clickedEl = a || null;
     targetId = String(b || '');
+    if (targetId && !targetId.endsWith('-panel')) targetId += '-panel';
   }
-  document.querySelectorAll('.document-panel').forEach(p => p.classList.remove('active'));
+
+  document.querySelectorAll('.document-panel').forEach(function(p){
+    p.classList.remove('active');
+    p.style.display = 'none';
+  });
+
+  document.querySelectorAll('.tab').forEach(function(t){
+    t.classList.remove('active');
+  });
+
   const panel = targetId ? document.getElementById(targetId) : null;
-  if (panel) panel.classList.add('active');
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  if (clickedEl && clickedEl.classList) clickedEl.classList.add('active');
-  if (targetId === 'buchungen-panel' && typeof bookingRefreshUI === 'function') bookingRefreshUI();
-  if (targetId === 'kalender-panel' && typeof WMK_CAL !== 'undefined' && WMK_CAL && typeof WMK_CAL.render === 'function') setTimeout(() => WMK_CAL.render(), 0);
+  if (panel) {
+    panel.classList.add('active');
+    panel.style.display = 'block';
+  }
+
+  if (clickedEl && clickedEl.classList) {
+    clickedEl.classList.add('active');
+  } else {
+    const foundTab = Array.from(document.querySelectorAll('.tab')).find(function(t){
+      const oc = t.getAttribute('onclick') || '';
+      return oc.includes("'" + targetId + "'") || oc.includes(targetId);
+    });
+    if (foundTab) foundTab.classList.add('active');
+  }
+
+  if (targetId === 'buchungen-panel' && typeof bookingRefreshUI === 'function') {
+    try { bookingRefreshUI(); } catch (e) { console.error(e); }
+  }
+
+  if (targetId === 'kalender-panel') {
+  console.log('DBG switchTab -> kalender-panel');
+  setTimeout(function(){
+    try {
+      const panel = document.getElementById('kalender-panel');
+      const calWrap = document.getElementById('wm-cal-native');
+
+      console.log('DBG kalender panel:', panel);
+      console.log('DBG wm-cal-native:', calWrap);
+      console.log('DBG WMK_CAL:', window.WMK_CAL);
+      console.log('DBG WMKCAL:', window.WMKCAL);
+
+      if (panel) {
+        console.log('DBG panel active?', panel.classList.contains('active'));
+        console.log('DBG panel display:', getComputedStyle(panel).display);
+        console.log('DBG panel visibility:', getComputedStyle(panel).visibility);
+        console.log('DBG panel size:', panel.offsetWidth, panel.offsetHeight);
+      }
+
+      if (calWrap) {
+        console.log('DBG calWrap before render innerHTML:', calWrap.innerHTML);
+        console.log('DBG calWrap display:', getComputedStyle(calWrap).display);
+        console.log('DBG calWrap visibility:', getComputedStyle(calWrap).visibility);
+        console.log('DBG calWrap size:', calWrap.offsetWidth, calWrap.offsetHeight);
+      }
+
+      if (window.WMK_CAL && typeof window.WMK_CAL.render === 'function') {
+        console.log('DBG calling WMK_CAL.render()');
+        window.WMK_CAL.render();
+      } else if (window.WMKCAL && typeof window.WMKCAL.render === 'function') {
+        console.log('DBG calling WMKCAL.render()');
+        window.WMKCAL.render();
+      } else {
+        console.error('DBG kein Kalenderobjekt gefunden');
+      }
+
+      if (calWrap) {
+        console.log('DBG calWrap after render innerHTML:', calWrap.innerHTML);
+        console.log('DBG calWrap after render childElementCount:', calWrap.childElementCount);
+      }
+    } catch (e) {
+      console.error('Kalender-Render-Fehler:', e);
+      throw e;
+    }
+  }, 80);
+}
 }
 
 
