@@ -4682,8 +4682,8 @@ async function bookingCreateFromForm(status, editIdOverride = null) {
   const customer = getVal('booking-customer').trim();
   const ref = getVal('booking-ref').trim();
   const baseNote = getVal('booking-note').trim();
-  const itemsNote = buildBookingItemsNote('angebot') || buildBookingItemsNote('auftragsbestaetigung') || '';
-  const note = mergeBookingNote(baseNote, itemsNote);
+const itemsNote = buildBookingItemsNote('angebot') || buildBookingItemsNote('auftragsbestaetigung');
+const note = joinBookingNoteParts(baseNote, itemsNote);
 
   const startD = dtLocalToDate(getVal("booking-start"));
   const endD = dtLocalToDate(getVal("booking-end"));
