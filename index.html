@@ -277,64 +277,85 @@
 
     @media print { .zahlungsblock { page-break-inside: avoid; } }
 
-    @media print {
-  @page { margin: 20mm 15mm 30mm 15mm; }
+.print-footer {
+  margin-top: 16px;
+  padding-top: 3mm;
+  border-top: 1px solid #1D334A;
+  font-size: 9px;
+  line-height: 1.2;
+  color: #666;
+}
+.print-footer p { margin: 0; }
+.print-footer p + p { margin-top: 1mm; }
 
-  html, body {
-    background: white !important;
-    padding: 0 !important;
-    margin: 0 !important;
+@media print {
+  @page {
+    size: A4;
+    margin: 20mm 15mm 8mm 15mm;
+  }
+    html, body { margin: 0 !important; padding: 0 !important; background: #fff !important;
   }
 
-  .header, .tabs, .form-section, .actions, #runtime-error {
+  .header, .tabs, .form-section, .actions, #runtime-error, .preview-footer {
     display: none !important;
   }
-
-  .document-panel {
-    box-shadow: none !important;
+  .document-panel, .preview {
+    height: 100% !important;
+    margin: 0 !important;
     padding: 0 !important;
-    margin: 0 !important;
   }
-
+  .document-panel {
+    box-shadow: none !important; padding: 0 !important;
+    margin: 0 !important; background: #fff !important;
+  }
   .preview {
-    display: block !important;
-    border: none !important;
-    padding: 0 0 28mm 0 !important;
-    margin: 0 !important;
-    page-break-before: auto !important;
-    page-break-after: auto !important;
-    break-before: auto !important;
-    break-after: auto !important;
+    display: block !important; margin: 0 !important; padding: 0 !important;
+    border: none !important; background: #fff !important; min-height: auto !important;
+  }
+  .print-shell {
+    width: 100% !important; border-collapse: collapse !important; border: none !important;
+  }
+  .print-shell thead { display: table-header-group !important; }
+  .print-shell tbody { display: table-row-group !important; }
+  .print-shell td { border: none !important; padding: 0 !important; vertical-align: top !important;
+  }
+  .print-body-inner {
+    padding-bottom: 22mm;
+  }
+  .print-footer {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 15mm !important;
+    right: 15mm !important;
+    margin-top: 0 !important;
+    padding: 3mm 0 5mm 0 !important;
+    background: #fff !important;
+    border-top: 1px solid #1D334A !important;
+    font-size: 9px !important;
+    line-height: 1.2 !important;
+    color: #666 !important;
   }
 
-  .preview * {
-    page-break-inside: avoid;
-    break-inside: avoid;
+  .preview-header, .preview-section, .preview-total, .zahlungsblock {
+    break-inside: avoid !important; page-break-inside: avoid !important;
   }
-
-  .preview-footer {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    padding: 4mm 15mm 4mm 15mm;
-    border-top: 1px solid #1D334A;
-    font-size: 0.75em;
-    line-height: 1.2;
-    color: #666;
-    background: white;
-    z-index: 9999;
+  .print-footer {
+    border-top: 1px solid #1D334A !important;
+    padding: 3mm 0 0 0 !important;
+    font-size: 9px !important;
+    line-height: 1.2 !important;
+    color: #666 !important;
   }
-
-  .preview-footer p {
-    margin: 0;
+  .print-footer p { margin: 0 !important; }
+  .print-footer p + p { margin-top: 1mm !important; }
+  .preview-header, .preview-section, .preview-total, .zahlungsblock {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
-
-  .preview-footer p + p {
-    margin-top: 1.5mm;
-  }
+  .preview-table { page-break-inside: auto !important; break-inside: auto !important; }
+  .preview-table tr { page-break-inside: avoid !important; break-inside: avoid !important; }
+ }
 }
-  
 
     /* WMK Native Calendar + Popup */
     .wmk-cal-topbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
@@ -472,6 +493,7 @@
   <div class="tab" onclick="switchTab(this, 'rechnung-panel')">Rechnung erstellen</div>
   <div class="tab" onclick="switchTab(this, 'gutschrift-panel')">Gutschrift erstellen</div>
   <div class="tab" onclick="switchTab(this, 'buchungen-panel')">Buchungen</div>
+  <div class="tab" onclick="switchTab(this, 'anfragen-panel')">Anfragen</div>
   <div class="tab" onclick="switchTab(this, 'kalender-panel')">Kalender</div>
 </div>
 
@@ -512,6 +534,7 @@
           <label for="angebot-nummer">Angebotsnummer *</label>
           <input type="text" id="angebot-nummer" placeholder="A-2026-001">
         </div>
+        <input type="hidden" id="angebot-document-id">
         <div class="form-group">
           <label for="angebot-datum">Datum</label>
           <input type="date" id="angebot-datum">
@@ -545,6 +568,7 @@
         </div>
 
         <input type="hidden" id="angebot-booking-id" value="">
+	<input type="hidden" id="angebot-request-id" value="">
 
         <div class="row">
           <button class="btn btn-muted" type="button" onclick="updateOfferBookingCheck(true)">Verfügbarkeit prüfen</button>
@@ -637,6 +661,7 @@
           <label for="auftragsbestaetigung-nummer">Auftragsbestätigungsnummer *</label>
           <input type="text" id="auftragsbestaetigung-nummer" placeholder="AB-2026-001">
         </div>
+        <input type="hidden" id="auftragsbestaetigung-document-id">
         <div class="form-group">
           <label for="auftragsbestaetigung-datum">Datum (Erstellung) *</label>
           <input type="date" id="auftragsbestaetigung-datum">
@@ -654,12 +679,22 @@
       </div>
     </div>
 
-    <div class="form-section">
+        <div class="form-section">
       <h2>Buchung (aus Angebot)</h2>
       <div class="info-box">
-        <div class="form-group">
-          <label for="auftragsbestaetigung-booking-id">Buchung-ID (local)</label>
-          <input type="text" id="auftragsbestaetigung-booking-id" readonly>
+        <div class="row">
+          <div class="form-group">
+            <label for="auftragsbestaetigung-booking-id">Buchung-ID (local)</label>
+            <input type="text" id="auftragsbestaetigung-booking-id" readonly>
+          </div>
+          <div class="form-group">
+            <label for="auftragsbestaetigung-booking-start">Buchungsbeginn</label>
+            <input type="datetime-local" id="auftragsbestaetigung-booking-start" readonly>
+          </div>
+          <div class="form-group">
+            <label for="auftragsbestaetigung-booking-end">Buchungsende</label>
+            <input type="datetime-local" id="auftragsbestaetigung-booking-end" readonly>
+          </div>
         </div>
         <p class="hint">Automatik: Sobald du die AB speicherst, wird die Buchung (falls ID vorhanden) auf „bestätigt“ gesetzt.</p>
       </div>
@@ -765,6 +800,7 @@
           <label for="rechnung-nummer">Rechnungsnummer *</label>
           <input type="text" id="rechnung-nummer" placeholder="RE-2026-001">
         </div>
+        <input type="hidden" id="rechnung-document-id">
         <div class="form-group">
           <label for="rechnung-datum">Rechnungsdatum *</label>
           <input type="date" id="rechnung-datum">
@@ -776,7 +812,7 @@
           <input type="date" id="rechnung-leistung">
         </div>
         <div class="form-group">
-          <label for="rechnung-faellig">Fällig am (automatisch +14 Tage)</label>
+          <label for="rechnung-faellig">Fällig am (sofort)</label>
           <input type="date" id="rechnung-faellig">
         </div>
       </div>
@@ -788,6 +824,26 @@
         <div class="form-group">
           <label for="rechnung-referenz-angebot">Referenz Angebot (optional)</label>
           <input type="text" id="rechnung-referenz-angebot">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h2>Buchungszeitraum</h2>
+      <div class="info-box">
+        <div class="row">
+          <div class="form-group">
+            <label for="rechnung-booking-id">Buchung-ID</label>
+            <input type="text" id="rechnung-booking-id" readonly>
+          </div>
+          <div class="form-group">
+            <label for="rechnung-booking-start">Buchungsbeginn</label>
+            <input type="datetime-local" id="rechnung-booking-start" readonly>
+          </div>
+          <div class="form-group">
+            <label for="rechnung-booking-end">Buchungsende</label>
+            <input type="datetime-local" id="rechnung-booking-end" readonly>
+          </div>
         </div>
       </div>
     </div>
@@ -1119,6 +1175,61 @@
     </div>
   </div>
  </div>
+</div>
+
+<div id="anfragen-panel" class="document-panel">
+  <div class="form-section">
+    <h2>Anfragen verwalten</h2>
+
+    <div class="booking-filters" style="display:flex; gap:15px; margin-bottom:20px; align-items:center; flex-wrap:wrap; background:#f9f9f9; padding:15px; border-radius:10px; border:1px solid #ddd;">
+      <div style="flex:1; min-width:250px;">
+        <input
+          type="text"
+          id="request-search-input"
+          placeholder="Suchen nach Name, E-Mail, Telefon, Paket oder Nachricht..."
+          style="width:100%; padding:10px; border:2px solid #ddd; border-radius:5px; font-size:1em;"
+          oninput="requestsRefreshUI()"
+        />
+      </div>
+
+      <div style="display:flex; align-items:center; gap:10px; background:white; padding:10px 15px; border-radius:5px; border:1px solid #ddd;">
+        <input
+          type="checkbox"
+          id="request-filter-active"
+          checked
+          onchange="requestsRefreshUI()"
+          style="width:20px; height:20px; cursor:pointer; accent-color:#1D334A;"
+        />
+        <label for="request-filter-active" style="cursor:pointer; font-weight:600; color:#1D334A; margin:0;">
+          Nur aktive anzeigen
+        </label>
+      </div>
+
+      <button class="btn btn-muted" type="button" onclick="requestsRefreshUI()">Liste aktualisieren</button>
+    </div>
+
+    <div style="overflow:auto;">
+      <table class="table-plain">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Datum / Zeit</th>
+            <th>Kunde</th>
+            <th>Paket</th>
+            <th>Personen</th>
+            <th>Nachricht / Optionen</th>
+            <th>ID</th>
+            <th style="min-width:240px;">Aktion</th>
+          </tr>
+        </thead>
+        <tbody id="request-list"></tbody>
+      </table>
+    </div>
+
+    <p class="hint" style="margin-top:10px;">
+      Hier erscheinen Website-Anfragen aus <span class="mono">wm_booking_requests</span>.
+    </p>
+  </div>
 </div>
 
   <!-- Kalender (Offline / Native) -->
@@ -1463,6 +1574,8 @@ async function bookingUpsert(obj) {
       String(previous.startMs || '') !== String(normalized.startMs || '') ||
       String(previous.endMs || '') !== String(normalized.endMs || '')
     );
+
+  const noteChanged = previous && (String(previous.notes || '') !== String(normalized.notes || ''));
 
   const idx = currentBookings.findIndex(x => x.id === normalized.id);
   if (idx >= 0) {
@@ -2044,6 +2157,369 @@ const itemsHtml = itemsText
   }
 }
 
+async function ensureReservationForIncomingRequest(row) {
+  if (!row || !row.id) return { created: false, skipped: true, reason: "missing-row" };
+  if (String(row.deleted_at || row.deletedat || '').trim()) {
+    return { created: false, skipped: true, reason: "deleted" };
+  }
+
+  const existingBookingId = String(row.converted_to_booking_id || '').trim();
+  if (existingBookingId) {
+    return { created: false, skipped: true, reason: "already-linked" };
+  }
+
+  const startRaw = row.start_time || row.starttime || null;
+  const endRaw = row.end_time || row.endtime || null;
+
+  const startMs = startRaw ? new Date(startRaw).getTime() : NaN;
+  const endMs = endRaw ? new Date(endRaw).getTime() : NaN;
+
+  if (!isFinite(startMs) || !isFinite(endMs) || endMs <= startMs) {
+    return { created: false, skipped: true, reason: "missing-time-range" };
+  }
+
+  if (typeof loadBookingsFromCloud === "function") {
+    await loadBookingsFromCloud();
+  }
+
+  const conflicts = typeof bookingConflicts === "function"
+    ? bookingConflicts(startMs, endMs, null)
+    : [];
+
+  if (Array.isArray(conflicts) && conflicts.length > 0) {
+    return {
+      created: false,
+      skipped: true,
+      reason: "conflict",
+      conflictIds: conflicts.map(b => b && b.id).filter(Boolean)
+    };
+  }
+
+  const bookingId = typeof bookingUid === "function" ? bookingUid() : crypto.randomUUID();
+
+  const personsText = [
+    row.persons ? `${row.persons} Erwachsene` : "",
+    row.children ? `${row.children} Kinder` : ""
+  ].filter(Boolean).join(", ");
+
+  const noteParts = [
+    "Reservierung automatisch aus Website-Anfrage",
+    row.packagename ? `Paket: ${row.packagename}` : "",
+    personsText ? `Teilnehmer: ${personsText}` : "",
+    row.optionstext ? `Optionen: ${row.optionstext}` : "",
+    row.message ? `Nachricht: ${row.message}` : ""
+  ].filter(Boolean);
+
+  await bookingUpsert({
+    id: bookingId,
+    resourceId: BOOKING.RESOURCE_ID || BOOKING.RESOURCEID,
+    status: "reserved",
+    customer: row.customername || "",
+    customerEmail: row.customeremail || "",
+    ref: row.request_number || row.id,
+    note: noteParts.join("\n"),
+    startMs,
+    endMs
+  });
+
+  const requestUpdatePayload = {
+    status: "converted",
+    converted_to_booking_id: bookingId
+  };
+
+  const { error: reqUpdateError } = await sb
+    .from("wm_booking_requests")
+    .update(requestUpdatePayload)
+    .eq("id", row.id);
+
+  if (reqUpdateError) {
+    console.error("Anfrage konnte nicht mit Reservierung verknüpft werden:", reqUpdateError);
+    throw reqUpdateError;
+  }
+
+  return { created: true, skipped: false, bookingId };
+}
+
+async function requestsLoadAllFromCloud() {
+  console.log('[REQ] requestsLoadAllFromCloud gestartet');
+  console.log('[REQ] sb vorhanden:', !!sb);
+
+  if (typeof sb === 'undefined' || !sb) {
+    throw new Error('Supabase ist nicht initialisiert.');
+  }
+
+  const { data, error } = await sb
+    .from('wm_booking_requests')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  console.log('[REQ] Supabase Antwort data:', data);
+  console.log('[REQ] Supabase Antwort error:', error);
+
+  if (error) {
+    console.error('Fehler beim Laden der Anfragen:', error);
+    throw error;
+  }
+
+  let rows = Array.isArray(data) ? data : [];
+  console.log('[REQ] Anzahl Anfragen:', rows.length);
+
+  for (const row of rows) {
+    try {
+      await ensureReservationForIncomingRequest(row);
+    } catch (e) {
+      console.error('[REQ] Auto-Reservierung für Anfrage fehlgeschlagen:', row?.id, e);
+    }
+  }
+
+  const { data: refreshedData, error: refreshedError } = await sb
+    .from('wm_booking_requests')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (refreshedError) {
+    console.error('Fehler beim Neuladen der Anfragen:', refreshedError);
+    throw refreshedError;
+  }
+
+  rows = Array.isArray(refreshedData) ? refreshedData : [];
+  console.log('[REQ] Anzahl Anfragen nach Auto-Reservierung:', rows.length);
+  return rows;
+}
+
+function requestStatusBadge(status, deletedAt) {
+  const s = String(status || '').toLowerCase();
+
+  if (deletedAt) return '<span class="tag t-canc">inaktiv</span>';
+  if (s === 'new') return '<span class="tag t-res">neu</span>';
+  if (s === 'in_progress') return '<span class="tag" style="background:#1565c0;">in Bearbeitung</span>';
+  if (s === 'converted') return '<span class="tag t-conf">übernommen</span>';
+  if (s === 'cancelled') return '<span class="tag t-canc">storniert</span>';
+
+  return '<span class="tag" style="background:#607d8b;">' + escapeHtml(String(status || 'offen')) + '</span>';
+}
+
+function requestFmtDateTime(startTime, date) {
+  try {
+    if (startTime) {
+      const d = new Date(startTime);
+      if (!isNaN(d.getTime())) return d.toLocaleString('de-DE');
+    }
+  } catch (e) {}
+  return String(date || '—');
+}
+
+async function requestsRefreshUI() {
+  const listEl = document.getElementById('request-list');
+  if (!listEl) return;
+
+  listEl.innerHTML = '<tr><td colspan="8" class="hint">Lade Anfragen...</td></tr>';
+
+  try {
+    const rows = await requestsLoadAllFromCloud();
+    const q = String(document.getElementById('request-search-input')?.value || '').trim().toLowerCase();
+    const onlyActive = !!document.getElementById('request-filter-active')?.checked;
+
+        const filtered = rows.filter(r => {
+      if (onlyActive && r.deleted_at) return false;
+      if (onlyActive && String(r.status || '').toLowerCase() === 'converted') return false;
+
+      const haystack = [
+        r.customer_name,
+        r.customer_email,
+        r.customer_phone,
+        r.package_name,
+        r.message,
+        r.options_text,
+        r.id,
+        r.date
+      ].join(' ').toLowerCase();
+
+      return !q || haystack.includes(q);
+    });
+
+    if (!filtered.length) {
+      listEl.innerHTML = '<tr><td colspan="8" class="hint">Keine Anfragen gefunden.</td></tr>';
+      return;
+    }
+
+    listEl.innerHTML = filtered.map(r => {
+      const msg = escapeHtml(String(r.message || ''));
+      const opts = escapeHtml(String(r.options_text || ''));
+      const persons = [
+        r.persons ? String(r.persons) + ' Pers.' : '',
+        r.children ? String(r.children) + ' Kinder' : ''
+      ].filter(Boolean).join(' / ') || '—';
+
+      const safeId = String(r.id || '').replace(/'/g, "\\'");
+
+      return `
+        <tr>
+          <td>${requestStatusBadge(r.status, r.deleted_at)}</td>
+          <td>${escapeHtml(requestFmtDateTime(r.start_time, r.date))}</td>
+          <td>
+            <strong>${escapeHtml(String(r.customer_name || '—'))}</strong><br>
+            <span class="hint">${escapeHtml(String(r.customer_email || ''))}</span><br>
+            <span class="hint">${escapeHtml(String(r.customer_phone || ''))}</span>
+          </td>
+          <td>${escapeHtml(String(r.package_name || '—'))}</td>
+          <td>${escapeHtml(persons)}</td>
+          <td>
+            ${msg ? '<div><strong>Nachricht:</strong><br>' + msg + '</div>' : ''}
+            ${opts ? '<div style="margin-top:6px;"><strong>Optionen:</strong><br>' + opts + '</div>' : ''}
+          </td>
+          <td><span class="mono">${escapeHtml(String(r.id || ''))}</span></td>
+          <td class="booking-actions-cell">
+            <div class="booking-actions-col">
+              <button class="btn btn-muted booking-action-btn" type="button" onclick="requestEditAction('${safeId}')">Im Angebot bearbeiten</button>
+              <button class="btn btn-secondary booking-action-btn" type="button" onclick="requestSetInProgress('${safeId}')">In Bearbeitung</button>
+              <button class="btn btn-danger booking-action-btn" type="button" onclick="requestToggleDeleted('${safeId}', ${r.deleted_at ? 'false' : 'true'})">${r.deleted_at ? 'Wiederherstellen' : 'Ausblenden'}</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (e) {
+    console.error('requestsRefreshUI Fehler:', e);
+    listEl.innerHTML = '<tr><td colspan="8" class="status-bad">Anfragen konnten nicht geladen werden.</td></tr>';
+  }
+}
+
+async function requestSetInProgress(id) {
+  try {
+    const { error } = await sb
+      .from('wm_booking_requests')
+      .update({ status: 'in_progress' })
+      .eq('id', id);
+
+    if (error) throw error;
+    await requestsRefreshUI();
+  } catch (e) {
+    console.error('requestSetInProgress Fehler:', e);
+    alert('Status konnte nicht aktualisiert werden: ' + (e.message || e));
+  }
+}
+
+async function requestToggleDeleted(id, makeDeleted) {
+  try {
+    const payload = makeDeleted
+      ? { deleted_at: new Date().toISOString() }
+      : { deleted_at: null };
+
+    const { error } = await sb
+      .from('wm_booking_requests')
+      .update(payload)
+      .eq('id', id);
+
+    if (error) throw error;
+    await requestsRefreshUI();
+  } catch (e) {
+    console.error('requestToggleDeleted Fehler:', e);
+    alert('Status konnte nicht aktualisiert werden: ' + (e.message || e));
+  }
+}
+
+async function requestEditAction(id) {
+  try {
+    const { data, error } = await sb
+      .from('wm_booking_requests')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+    if (!data) {
+      alert('Anfrage nicht gefunden.');
+      return;
+    }
+
+    const reqStatus = String(data.status || '').toLowerCase();
+    if (reqStatus === 'converted') {
+      alert('Diese Anfrage wurde bereits übernommen.');
+      return;
+    }
+
+    const angebotNameEl = document.getElementById('angebot-kunde-name');
+    const angebotEmailEl = document.getElementById('angebot-kunde-email');
+    const angebotLeistungEl = document.getElementById('angebot-leistung');
+    const angebotStartEl = document.getElementById('angebot-booking-start');
+    const angebotEndEl = document.getElementById('angebot-booking-end');
+    const angebotBookingIdEl = document.getElementById('angebot-booking-id');
+    const angebotNotizEl = document.getElementById('angebot-notizen');
+
+    if (angebotNameEl) angebotNameEl.value = data.customer_name || '';
+    if (angebotEmailEl) angebotEmailEl.value = data.customer_email || '';
+        if (angebotLeistungEl && data.start_time) {
+      const d = new Date(data.start_time);
+      if (!isNaN(d.getTime())) {
+        angebotLeistungEl.value = d.toISOString().slice(0, 10);
+      }
+    }
+    const angebotRequestIdEl = document.getElementById('angebot-request-id');
+
+    if (angebotRequestIdEl) angebotRequestIdEl.value = data.id || '';
+    if (angebotBookingIdEl && data.converted_to_booking_id) {
+    angebotBookingIdEl.value = data.converted_to_booking_id;
+    }
+
+    const noteParts = [];
+    if (data.package_name) noteParts.push('Paket: ' + data.package_name);
+    if (data.persons) noteParts.push('Personen: ' + data.persons);
+    if (data.children) noteParts.push('Kinder: ' + data.children);
+    if (data.children_ages) noteParts.push('Alter Kinder: ' + data.children_ages);
+    if (data.options_text) noteParts.push('Optionen: ' + data.options_text);
+    if (data.message) noteParts.push('Nachricht: ' + data.message);
+
+        if (angebotNotizEl) {
+      const existingText = String(angebotNotizEl.value || '').trim();
+      const requestText = noteParts.join('\n').trim();
+
+      if (requestText) {
+        if (existingText) {
+          angebotNotizEl.value = requestText + '\n\n---\n\n' + existingText;
+        } else {
+          angebotNotizEl.value = requestText;
+        }
+      }
+    }
+
+    if (angebotStartEl && data.start_time) {
+      const d = new Date(data.start_time);
+      if (!isNaN(d.getTime())) angebotStartEl.value = d.toISOString().slice(0, 16);
+    }
+
+    if (angebotEndEl && data.end_time) {
+      const d = new Date(data.end_time);
+      if (!isNaN(d.getTime())) angebotEndEl.value = d.toISOString().slice(0, 16);
+    }
+
+    const angebotTab = Array.from(document.querySelectorAll('.tab')).find(t =>
+      String(t.getAttribute('onclick') || '').includes('angebot-panel')
+    );
+
+    if (typeof switchTab === 'function') {
+      switchTab(angebotTab, 'angebot-panel');
+    }
+
+    try {
+      await sb
+        .from('wm_booking_requests')
+        .update({ status: 'in_progress' })
+        .eq('id', id);
+    } catch (statusErr) {
+      console.warn('Anfrage-Status konnte nicht auf in_progress gesetzt werden:', statusErr);
+    }
+
+    if (typeof requestsRefreshUI === 'function') {
+      try { await requestsRefreshUI(); } catch (e) { console.error(e); }
+    }
+
+  } catch (e) {
+    console.error('requestEditAction Fehler:', e);
+    alert('Anfrage konnte nicht in Angebot übernommen werden: ' + (e.message || e));
+  }
+}
+
 /** =========================
  /* =========================
  *  DATE HELPERS
@@ -2122,17 +2598,22 @@ Die Gutschrift bezieht sich auf die angegebene Rechnung und wird entsprechend ve
  *  ========================= */
 function bankBlockHtml() {
   return `
-<p style="white-space: pre-line;">
+    <p style="white-space: pre-line; margin-top: 0;">
+Bankverbindung:
 Kontoinhaber: ${escapeHtml(BANK.kontoinhaber)}
 IBAN: ${escapeHtml(BANK.iban)}
 BIC: ${escapeHtml(BANK.bic)}
 Bank: ${escapeHtml(BANK.bank)}
-</p>`;
+    </p>
+  `;
 }
 function formatMoney(n) {
   const x = Number(n);
-  if (!isFinite(x)) return "0.00";
-  return x.toFixed(2);
+  if (!isFinite(x)) return "0,00";
+  return new Intl.NumberFormat("de-DE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(x);
 }
 function moneySpan(amount, bold=false) {
   const val = formatMoney(amount);
@@ -2173,9 +2654,9 @@ document.addEventListener("DOMContentLoaded", function() {
   const rDatum = document.getElementById("rechnung-datum");
   const rFaellig = document.getElementById("rechnung-faellig");
   if (rDatum && rFaellig) {
-    rFaellig.value = addDaysToISODate(rDatum.value || today, 14);
-    rDatum.addEventListener("change", function() {
-      if (this.value) rFaellig.value = addDaysToISODate(this.value, 14);
+    rFaellig.value = rDatum.value || today;
+    rDatum.addEventListener('change', function () {
+    if (this.value) rFaellig.value = this.value;
     });
   }
 
@@ -2218,8 +2699,8 @@ if (abItems) {
       /^auftragsbestaetigung-(qty|price|tax)-\d+$/.test(target.id || "");
 
     if (isRelevantField) {
-  applyAutoDepositFromOfferFirstPosition(collectItems("auftragsbestaetigung"));
-}
+      refreshAbDepositAuto();
+    }
   });
 }
 
@@ -2274,13 +2755,13 @@ function getNextDocumentNumber(kind) {
 }
 
 const OFFER_ITEM_TEMPLATES = [
-  { label: 'Miete Eventfloß Aurora - Explorer Tour 4 h Mo - Do', description: 'Miete Eventfloß Aurora - Explorer Tour 4 h Mo - Do', price: 450.00 },
-  { label: 'Miete Eventfloß Aurora - Explorer Tour 4 h Fr - So & Feiertag', description: 'Miete Eventfloß Aurora - Explorer Tour 4 h Fr - So & Feiertag', price: 530.00 },
+  { label: 'Miete Eventfloß Aurora - Explorer Tour 4 h Mo - Do', description: 'Miete Eventfloß Aurora - Explorer Tour 4 h Mo - Do', price: 510.00 },
+  { label: 'Miete Eventfloß Aurora - Explorer Tour 4 h Fr - So & Feiertag', description: 'Miete Eventfloß Aurora - Explorer Tour 4 h Fr - So & Feiertag', price: 590.00 },
   { label: 'Miete Eventfloß Aurora - Halbtags-Cruise 6 h Mo - Do', description: 'Miete Eventfloß Aurora - Halbtags-Cruise 6 h Mo - Do', price: 690.00 },
   { label: 'Miete Eventfloß Aurora - Halbtags-Cruise 6 h Fr - So & Feiertag', description: 'Miete Eventfloß Aurora - Halbtags-Cruise 6 h Fr - So & Feiertag', price: 840.00 },
   { label: 'Miete Eventfloß Aurora - Ganztags-Abenteuer 8 h Mo - Do', description: 'Miete Eventfloß Aurora - Ganztags-Abenteuer 8 h Mo - Do', price: 790.00 },
   { label: 'Miete Eventfloß Aurora - Ganztags-Abenteuer 8 h Fr - So & Feiertag', description: 'Miete Eventfloß Aurora - Ganztags-Abenteuer 8 h Fr - So & Feiertag', price: 920.00 },
-  { label: 'Warnow Matrosen Box, Burger Style, p.P.', description: 'Warnow Matrosen Box, Burger Style, p.P.', price: 20.00 },
+  { label: 'Grill Party Box, p.P.', description: 'Warnow Matrosen Box, Burger Style, p.P.', price: 20.00 },
   { label: 'Leinen Los Discount', description: 'Leinen Los Discount', price: null },
   { label: 'Skipper p.h.', description: 'Skipper p.h.', price: 20.00 },
   { label: 'Musikbox (pauschal)', description: 'Musikbox (pauschal)', price: 40.00 },
@@ -2312,19 +2793,32 @@ function offerItemTemplateOptions() {
     .join('');
 }
 
+function refreshAbDepositAuto() {
+  if (!abDepositAuto) return;
+  applyAutoDepositFromOfferFirstPosition(collectItems("auftragsbestaetigung"));
+}
+
 function applyItemTemplate(selectEl) {
   if (!selectEl) return;
   const row = selectEl.closest('.item-row');
   if (!row) return;
+
   const desc = row.querySelector('.item-description') || row.querySelector('input[id*="-desc-"]');
   const price = row.querySelector('.item-price') || row.querySelector('input[id*="-price-"]');
   if (!desc || !price) return;
+
   if (selectEl.value === '' || selectEl.value === '__custom__') return;
+
   const tpl = OFFER_ITEM_TEMPLATES[Number(selectEl.value)];
   if (!tpl) return;
+
   desc.value = tpl.description || '';
   if (typeof tpl.price === 'number' && !Number.isNaN(tpl.price)) {
     price.value = tpl.price.toFixed(2);
+  }
+
+  if (row.closest('#auftragsbestaetigung-items')) {
+    refreshAbDepositAuto();
   }
 }
 
@@ -2364,10 +2858,19 @@ function addItem(type) {
     <button class="remove-item-btn" type="button" onclick="removeItem('${type}', ${itemId})">✕</button>
   `;
   itemsContainer.appendChild(itemRow);
+
+  if (type === "auftragsbestaetigung") {
+    refreshAbDepositAuto();
+  }
 }
+
 function removeItem(type, itemId) {
   const row = document.getElementById(`${type}-item-${itemId}`);
   if (row) row.remove();
+
+  if (type === "auftragsbestaetigung") {
+    refreshAbDepositAuto();
+  }
 }
 
 /** =========================
@@ -2967,8 +3470,12 @@ function buildAuftragsbestaetigungJson() {
     typ: "auftragsbestaetigung",
     nummer: getVal("auftragsbestaetigung-nummer"),
     datum: getVal("auftragsbestaetigung-datum"),
-    referenzAngebot: getVal("auftragsbestaetigung-referenz-angebot"),
+        referenzAngebot: getVal("auftragsbestaetigung-referenz-angebot"),
     bookingId: getVal("auftragsbestaetigung-booking-id") || "",
+    booking: {
+      startLocal: getVal("auftragsbestaetigung-booking-start") || "",
+      endLocal: getVal("auftragsbestaetigung-booking-end") || ""
+    },
     kunde: {
       name: getVal("auftragsbestaetigung-kunde-name"),
       adresse: getVal("auftragsbestaetigung-kunde-adresse"),
@@ -2994,11 +3501,16 @@ autoBerechnungAktiv: abDepositAuto
 }
 
 function buildRechnungJson() {
+  const rechnungsdatum = getVal('rechnung-datum');
   return {
     typ: 'rechnung',
     nummer: getVal('rechnung-nummer'),
-    datum: getVal('rechnung-datum'),
+    datum: rechnungsdatum,
     bookingId: getVal('rechnung-booking-id') || null,
+    booking: {
+      startLocal: getVal('rechnung-booking-start') || '',
+      endLocal: getVal('rechnung-booking-end') || ''
+    },
     kunde: {
       name: getVal('rechnung-kunde-name'),
       adresse: getVal('rechnung-kunde-adresse'),
@@ -3007,13 +3519,15 @@ function buildRechnungJson() {
       email: getVal('rechnung-kunde-email') || ''
     },
     leistungsdatum: getVal('rechnung-leistung'),
-    faellig: getVal('rechnung-faellig'),
+    faellig: getVal('rechnung-faellig') || rechnungsdatum,
     referenzAuftragsbestaetigung: getVal('rechnung-referenz-ab'),
     referenzAngebot: getVal('rechnung-referenz-angebot'),
     positionen: collectItems('rechnung'),
     anzahlung: {
   betragBrutto: parseFloat(getVal('rechnung-anzahlung-betrag')) || 0,
-  mwst: String(getVal('rechnung-anzahlung-mwst') || '19'),
+  betragBrutto19: parseFloat(getVal('rechnung-anzahlung-betrag-19')) || 0,
+  betragBrutto7: parseFloat(getVal('rechnung-anzahlung-betrag-7')) || 0,
+  mwst: String(getVal('rechnung-anzahlung-mwst') || 'gemischt'),
   faellig: getVal('rechnung-anzahlung-faellig'),
   inTabelle: getVal('rechnung-anzahlung-in-tabelle') || 'ja',
   manuellGeaendert: true
@@ -3186,6 +3700,80 @@ function saveJsonLocally(data, fileName) {
   URL.revokeObjectURL(a.href);
 }
 
+async function saveDocumentToSupabase({ type, number, customerName, content, hiddenIdField }) {
+  if (typeof sb === 'undefined' || !sb) {
+    return { ok: true, id: null, mode: 'local-only' };
+  }
+
+  const normalizedNumber = String(number || '').trim();
+  if (!normalizedNumber) throw new Error('Dokumentnummer fehlt.');
+
+  const payload = {
+    type,
+    number: normalizedNumber,
+    customer_name: customerName || null,
+    content
+  };
+
+  const knownId = String(document.getElementById(hiddenIdField)?.value || '').trim();
+
+  // 1. Wenn wir die exakte Supabase-ID bereits haben -> direkt updaten
+  if (knownId) {
+    const { data, error } = await sb
+      .from('wm_documents')
+      .update(payload)
+      .eq('id', knownId)
+      .select('id')
+      .single();
+
+    if (error) throw error;
+    setIfExists(hiddenIdField, data.id);
+    return { ok: true, id: data.id, mode: 'update-by-id' };
+  }
+
+  // 2. Ansonsten nach type und nummer suchen
+  const { data: matches, error: matchError } = await sb
+    .from('wm_documents')
+    .select('id')
+    .eq('type', type)
+    .eq('number', normalizedNumber)
+    .order('created_at', { ascending: false })
+    .limit(2);
+
+  if (matchError) throw matchError;
+
+  // 3. Sicherheitsprüfung auf Duplikate
+  if ((matches || []).length > 1) {
+    alert(`Für ${type} ${normalizedNumber} existieren bereits mehrere Datensätze in Supabase. Abbruch, um nichts doppelt zu überschreiben.`);
+    return { ok: false, duplicate: true };
+  }
+
+  // 4. Eindeutiger Treffer -> updaten
+  if ((matches || []).length === 1) {
+    const { data, error } = await sb
+      .from('wm_documents')
+      .update(payload)
+      .eq('id', matches[0].id)
+      .select('id')
+      .single();
+
+    if (error) throw error;
+    setIfExists(hiddenIdField, data.id);
+    return { ok: true, id: data.id, mode: 'update-by-number' };
+  }
+
+  // 5. Nichts gefunden -> neu anlegen (insert)
+  const { data, error } = await sb
+    .from('wm_documents')
+    .insert(payload)
+    .select('id')
+    .single();
+
+  if (error) throw error;
+  setIfExists(hiddenIdField, data.id);
+  return { ok: true, id: data.id, mode: 'insert' };
+}
+
 async function saveAngebotJsonLocally() {
   bookingLoadAll();
 
@@ -3234,54 +3822,71 @@ async function saveAngebotJsonLocally() {
 
   saveJsonLocally(data, data.nummer + ".json");
 
-  if (typeof sb !== "undefined" && sb) {
-    try {
-      const angebotNumber = String(data.nummer || '').trim();
+  if (typeof sb !== 'undefined' && sb) {
+  try {
+    const angebotNumber = String(data.nummer).trim();
+    const documentPayload = {
+      type: "angebot",
+      number: angebotNumber,
+      customername: data.kunde ? data.kunde.name : null,
+      content: data
+    };
 
-      const documentPayload = {
-        type: 'angebot',
-        number: angebotNumber,
-        customer_name: data.kunde ? data.kunde.name : null,
-        content: data
-      };
+    const { data: existingDocs, error: existingDocError } = await sb
+      .from("wm_documents")
+      .select("id")
+      .eq("type", "angebot")
+      .eq("number", angebotNumber)
+      .limit(1);
 
-      const { data: existingDocs, error: existingDocError } = await sb
-        .from('wm_documents')
-        .select('id')
-        .eq('type', 'angebot')
-        .eq('number', angebotNumber)
-        .limit(1);
+    if (existingDocError) throw existingDocError;
 
-      if (existingDocError) throw existingDocError;
+    const existingDoc = existingDocs && existingDocs.length > 0 ? existingDocs[0] : null;
+    let docError = null;
 
-      const existingDoc = existingDocs && existingDocs.length > 0 ? existingDocs[0] : null;
-
-      let docError = null;
-
-      if (existingDoc?.id) {
-        const { error } = await sb
-          .from('wm_documents')
-          .update(documentPayload)
-          .eq('id', existingDoc.id);
-        docError = error;
-      } else {
-        const { error } = await sb
-          .from('wm_documents')
-          .insert(documentPayload);
-        docError = error;
-      }
-
-      if (docError) {
-        console.error("Fehler beim Speichern (Supabase):", docError);
-        alert("Fehler beim Speichern in Supabase: " + docError.message);
-      } else {
-        console.log("Erfolgreich in Supabase gespeichert oder aktualisiert.");
-      }
-    } catch (e) {
-      console.error("Unerwarteter Fehler (Supabase):", e);
-      alert("Unerwarteter Supabase Fehler.");
+    if (existingDoc && existingDoc.id) {
+      const { error } = await sb
+        .from("wm_documents")
+        .update(documentPayload)
+        .eq("id", existingDoc.id);
+      docError = error;
+    } else {
+      const { error } = await sb
+        .from("wm_documents")
+        .insert(documentPayload);
+      docError = error;
     }
+
+    if (docError) {
+      console.error("Fehler beim Speichern (Supabase):", docError);
+      alert("Fehler beim Speichern in Supabase: " + docError.message);
+    } else {
+      console.log("Erfolgreich in Supabase gespeichert oder aktualisiert.");
+
+      const requestId = String(getVal("angebot-request-id") || "").trim();
+      const convertedBookingId = String(getVal("angebot-booking-id") || "").trim();
+
+      if (requestId && convertedBookingId) {
+      const { error: reqUpdateError } = await sb
+     .from("wm_booking_requests")
+     .update({
+      status: "converted",
+      converted_to_booking_id: convertedBookingId
+      })
+     .eq("id", requestId);
+
+        if (reqUpdateError) {
+          console.warn("Anfrage konnte nicht auf converted gesetzt werden:", reqUpdateError);
+        } else if (typeof requestsRefreshUI === "function") {
+          await requestsRefreshUI();
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Unerwarteter Fehler (Supabase):", e);
+    alert("Unerwarteter Supabase Fehler.");
   }
+}
 
   if (typeof sb !== "undefined" && sb) {
     try {
@@ -4424,13 +5029,14 @@ function loadAuftragsbestaetigungJsonForAB(event) {
         setIfExists('auftragsbestaetigung-kunde-email', ab.kunde.email || '');
       }
 
-      setIfExists('auftragsbestaetigung-booking-id', ab.bookingId || '');
-      
-      if (ab.booking) {
-        if (ab.booking.bookingId || ab.booking.id) {
-            setIfExists('auftragsbestaetigung-booking-id', ab.booking.bookingId || ab.booking.id);
-        }
-      }
+      setIfExists("auftragsbestaetigung-booking-id", ab.bookingId || "");
+if (ab.booking) {
+  if (ab.booking.bookingId || ab.booking.id) {
+    setIfExists("auftragsbestaetigung-booking-id", ab.booking.bookingId || ab.booking.id);
+  }
+  setIfExists("auftragsbestaetigung-booking-start", ab.booking.startLocal || "");
+  setIfExists("auftragsbestaetigung-booking-end", ab.booking.endLocal || "");
+}
 
       setIfExists('auftragsbestaetigung-notizen', ab.notizen || '');
 
@@ -4493,24 +5099,27 @@ function loadRechnungJsonForRechnung(event) {
         setIfExists('rechnung-kunde-email', re.kunde.email || '');
       }
 
-      setIfExists('rechnung-booking-id', re.bookingId || '');
-      
-      if (re.booking) {
-        if (re.booking.bookingId || re.booking.id) {
-            setIfExists('rechnung-booking-id', re.booking.bookingId || re.booking.id);
-        }
-      }
+      setIfExists("rechnung-booking-id", re.bookingId || "");
+if (re.booking) {
+  if (re.booking.bookingId || re.booking.id) {
+    setIfExists("rechnung-booking-id", re.booking.bookingId || re.booking.id);
+  }
+  setIfExists("rechnung-booking-start", re.booking.startLocal || "");
+  setIfExists("rechnung-booking-end", re.booking.endLocal || "");
+}
 
       setIfExists('rechnung-notizen', re.notizen || '');
 
       if (re.anzahlung) {
-        setIfExists('rechnung-anzahlung-betrag', re.anzahlung.betragBrutto || 0);
-        setIfExists('rechnung-anzahlung-mwst', re.anzahlung.mwst || 19);
-        setIfExists('rechnung-anzahlung-faellig', re.anzahlung.faellig || '');
-        if (re.anzahlung.inTabelle) {
-          setIfExists('rechnung-anzahlung-in-tabelle', re.anzahlung.inTabelle);
-        }
-      }
+  setIfExists('rechnung-anzahlung-betrag', re.anzahlung.betragBrutto || 0);
+  setIfExists('rechnung-anzahlung-betrag-19', re.anzahlung.betragBrutto19 || 0);
+  setIfExists('rechnung-anzahlung-betrag-7', re.anzahlung.betragBrutto7 || 0);
+  setIfExists('rechnung-anzahlung-mwst', re.anzahlung.mwst || 19);
+  setIfExists('rechnung-anzahlung-faellig', re.anzahlung.faellig || '');
+  if (re.anzahlung.inTabelle) {
+    setIfExists('rechnung-anzahlung-in-tabelle', re.anzahlung.inTabelle);
+  }
+}
 
       const itemsContainer = document.getElementById('rechnung-items');
       if (itemsContainer) {
@@ -4572,14 +5181,29 @@ function fuelleAuftragsbestaetigungAusAngebot(angebot) {
   setIfExists("auftragsbestaetigung-leistung", angebot.leistungsdatum || "");
   setIfExists("auftragsbestaetigung-referenz-angebot", angebot.nummer || "");
 
-  let bid = "";
+    let bid = "";
+  let bookingStart = "";
+  let bookingEnd = "";
+
   if (angebot.booking) {
     bid = angebot.booking.bookingId || angebot.booking.id || "";
+    bookingStart = angebot.booking.startLocal || "";
+    bookingEnd = angebot.booking.endLocal || "";
   }
+
   if (!bid) bid = angebot.bookingId || angebot.booking_id || "";
 
   setIfExists("auftragsbestaetigung-booking-id", bid);
-  console.log("[DBG loadAngebotJson]", { kundeEmail: angebot.kunde.email || "", bookingId: bid, angebot });
+  setIfExists("auftragsbestaetigung-booking-start", bookingStart);
+  setIfExists("auftragsbestaetigung-booking-end", bookingEnd);
+
+  console.log("[DBG loadAngebotJson]", {
+    kundeEmail: angebot.kunde.email || "",
+    bookingId: bid,
+    bookingStart,
+    bookingEnd,
+    angebot
+  });
 
   const itemsContainer = document.getElementById("auftragsbestaetigung-items");
   itemsContainer.innerHTML = "";
@@ -4628,9 +5252,23 @@ function loadAuftragsbestaetigungJsonForRechnung(event) {
 function fuelleRechnungAusAuftragsbestaetigung(ab) {
   if (!ab) return;
 
-  if (ab.bookingId) {
-    setIfExists("rechnung-booking-id", ab.bookingId);
-  }
+    const rechnungBookingId =
+    ab.bookingId ||
+    ab.booking?.bookingId ||
+    ab.booking?.id ||
+    "";
+
+  const rechnungBookingStart =
+    ab.booking?.startLocal ||
+    "";
+
+  const rechnungBookingEnd =
+    ab.booking?.endLocal ||
+    "";
+
+  setIfExists("rechnung-booking-id", rechnungBookingId);
+  setIfExists("rechnung-booking-start", rechnungBookingStart);
+  setIfExists("rechnung-booking-end", rechnungBookingEnd);
 
   setIfExists("rechnung-kunde-name", ab.kunde?.name || "");
   setIfExists("rechnung-kunde-adresse", ab.kunde?.adresse || "");
@@ -4663,13 +5301,25 @@ function fuelleRechnungAusAuftragsbestaetigung(ab) {
   }
 
   const anz = ab.anzahlung || {};
-  const anzBetrag = parseFloat(anz.betragBrutto != null ? anz.betragBrutto : 0) || 0;
-  const anzMwst = parseFloat(anz.mwst != null ? anz.mwst : 19) || 19;
+const anzBetrag = parseFloat(anz.betragBrutto ?? 0) || 0;
+let anzBetrag19 = parseFloat(anz.betragBrutto19 ?? 0) || 0;
+let anzBetrag7 = parseFloat(anz.betragBrutto7 ?? 0) || 0;
+const anzMwst = String(anz.mwst ?? "19");
 
-  setIfExists("rechnung-anzahlung-betrag", anzBetrag);
-  setIfExists("rechnung-anzahlung-mwst", anzMwst);
-  setIfExists("rechnung-anzahlung-faellig", anz.faellig || "");
-  setIfExists("rechnung-anzahlung-in-tabelle", "ja");
+if (anzBetrag > 0 && anzBetrag19 <= 0 && anzBetrag7 <= 0) {
+  if (anzMwst === "7") {
+    anzBetrag7 = anzBetrag;
+  } else {
+    anzBetrag19 = anzBetrag;
+  }
+}
+
+setIfExists("rechnung-anzahlung-betrag", anzBetrag.toFixed(2));
+setIfExists("rechnung-anzahlung-betrag-19", anzBetrag19.toFixed(2));
+setIfExists("rechnung-anzahlung-betrag-7", anzBetrag7.toFixed(2));
+setIfExists("rechnung-anzahlung-mwst", anzMwst);
+setIfExists("rechnung-anzahlung-faellig", anz.faellig || "");
+setIfExists("rechnung-anzahlung-in-tabelle", anz.inTabelle || "ja");
 
   setIfExists("rechnung-notizen", defaultTextRechnung());
 }
@@ -5071,31 +5721,41 @@ const docDatum = isStorno
     if (bid) additionalInfo += `<p><strong>Reservierungs-ID:</strong> <span class="mono">${escapeHtml(bid)}</span></p>`;
   }
 
-  if (type === "auftragsbestaetigung") {
+    if (type === "auftragsbestaetigung") {
     const ref = getVal("auftragsbestaetigung-referenz-angebot");
     if (ref) additionalInfo += `<p><strong>Referenz Angebot:</strong> ${escapeHtml(ref)}</p>`;
+
     const bid = (getVal("auftragsbestaetigung-booking-id") || "").trim();
     if (bid) additionalInfo += `<p><strong>Buchung-ID:</strong> <span class="mono">${escapeHtml(bid)}</span></p>`;
+
+    const bs = getVal("auftragsbestaetigung-booking-start");
+    const be = getVal("auftragsbestaetigung-booking-end");
+    if (bs && be) {
+      const sd = dtLocalToDate(bs);
+      const ed = dtLocalToDate(be);
+      additionalInfo += `<p><strong>Buchungszeitraum:</strong> ${escapeHtml(fmtDT(sd.getTime()))} – ${escapeHtml(fmtDT(ed.getTime()))}</p>`;
+    }
   }
 
   if (type === "rechnung") {
     const faellig = getVal("rechnung-faellig");
     if (faellig) additionalInfo += `<p><strong>Fällig am:</strong> ${formatDate(faellig)}</p>`;
+
     const refAB = getVal("rechnung-referenz-ab");
     if (refAB) additionalInfo += `<p><strong>Referenz Auftragsbestätigung:</strong> ${escapeHtml(refAB)}</p>`;
+
     const refAngebot = getVal("rechnung-referenz-angebot");
     if (refAngebot) additionalInfo += `<p><strong>Referenz Angebot:</strong> ${escapeHtml(refAngebot)}</p>`;
-  }
 
-  if (isStorno) {
-    if (data.originalRechnung) {
-      additionalInfo += `<p><strong>Storno zu Rechnung:</strong> ${escapeHtml(data.originalRechnung)}</p>`;
-    }
-    if (data.originalRechnungsdatum) {
-      additionalInfo += `<p><strong>Originaldatum:</strong> ${formatDate(data.originalRechnungsdatum)}</p>`;
-    }
-    if (data.stornoGrund) {
-      additionalInfo += `<p><strong>Stornogrund:</strong> ${escapeHtml(data.stornoGrund)}</p>`;
+    const bid = (getVal("rechnung-booking-id") || "").trim();
+    if (bid) additionalInfo += `<p><strong>Buchung-ID:</strong> <span class="mono">${escapeHtml(bid)}</span></p>`;
+
+    const bs = getVal("rechnung-booking-start");
+    const be = getVal("rechnung-booking-end");
+    if (bs && be) {
+      const sd = dtLocalToDate(bs);
+      const ed = dtLocalToDate(be);
+      additionalInfo += `<p><strong>Buchungszeitraum:</strong> ${escapeHtml(fmtDT(sd.getTime()))} – ${escapeHtml(fmtDT(ed.getTime()))}</p>`;
     }
   }
 
@@ -5150,35 +5810,71 @@ const docDatum = isStorno
     `;
   });
 
-  let anzahlungRow = "";
-  let anzahlungDeductNet = 0;
-  let anzahlungDeductTax = 0;
+let anzahlungRow = "";
+let anzahlungDeductNet = 0;
+let anzahlungDeductTax = 0;
 
-  if (type === "rechnung") {
-    const inTabelle = getVal("rechnung-anzahlung-in-tabelle") === "ja";
-    const anzBruttoPos = parseFloat(getVal("rechnung-anzahlung-betrag")) || 0;
-    const anzMwst = parseFloat(getVal("rechnung-anzahlung-mwst")) || 0;
+if (type === "rechnung") {
+  const inTabelle = String(getVal("rechnung-anzahlung-in-tabelle") || "ja") === "ja";
+  const anzGesamt = parseFloat(getVal("rechnung-anzahlung-betrag")) || 0;
+  let anzBrutto19 = parseFloat(getVal("rechnung-anzahlung-betrag-19")) || 0;
+  let anzBrutto7 = parseFloat(getVal("rechnung-anzahlung-betrag-7")) || 0;
+  const anzMwst = String(getVal("rechnung-anzahlung-mwst") || "19");
 
-    if (inTabelle && anzBruttoPos > 0) {
-      const bruttoNeg = -anzBruttoPos;
-      const nettoNeg = bruttoNeg / (1 + (anzMwst / 100));
-      const taxNeg = nettoNeg * (anzMwst / 100);
-
-      anzahlungDeductNet = nettoNeg;
-      anzahlungDeductTax = taxNeg;
-
-      anzahlungRow = `
-        <tr style="background:#eef6ff;">
-          <td>${rowIndex + 1}</td>
-          <td><strong>Anzahlung (Verrechnung)</strong></td>
-          <td style="text-align:center;">1</td>
-          <td style="text-align:right;">${moneySpan(bruttoNeg)}</td>
-          <td style="text-align:center;">${formatQty(anzMwst)}%</td>
-          <td style="text-align:right;">${moneySpan(bruttoNeg, true)}</td>
-        </tr>
-      `;
+  if (anzGesamt > 0 && anzBrutto19 <= 0 && anzBrutto7 <= 0) {
+    if (anzMwst === "7") {
+      anzBrutto7 = anzGesamt;
+    } else {
+      anzBrutto19 = anzGesamt;
     }
   }
+
+  const rows = [];
+
+  if (inTabelle && anzBrutto19 > 0) {
+    const bruttoNeg19 = -anzBrutto19;
+    const nettoNeg19 = bruttoNeg19 / 1.19;
+    const taxNeg19 = bruttoNeg19 - nettoNeg19;
+
+    anzahlungDeductNet += nettoNeg19;
+    anzahlungDeductTax += taxNeg19;
+
+    rowIndex++;
+    rows.push(`
+      <tr style="background:#eef6ff;">
+        <td>${rowIndex}</td>
+        <td><strong>Anzahlung (Verrechnung)</strong> 19%</td>
+        <td style="text-align:center;">1</td>
+        <td style="text-align:right;">${moneySpan(bruttoNeg19)}</td>
+        <td style="text-align:center;">19%</td>
+        <td style="text-align:right;">${moneySpan(bruttoNeg19, true)}</td>
+      </tr>
+    `);
+  }
+
+  if (inTabelle && anzBrutto7 > 0) {
+    const bruttoNeg7 = -anzBrutto7;
+    const nettoNeg7 = bruttoNeg7 / 1.07;
+    const taxNeg7 = bruttoNeg7 - nettoNeg7;
+
+    anzahlungDeductNet += nettoNeg7;
+    anzahlungDeductTax += taxNeg7;
+
+    rowIndex++;
+    rows.push(`
+      <tr style="background:#eef6ff;">
+        <td>${rowIndex}</td>
+        <td><strong>Anzahlung (Verrechnung)</strong> 7%</td>
+        <td style="text-align:center;">1</td>
+        <td style="text-align:right;">${moneySpan(bruttoNeg7)}</td>
+        <td style="text-align:center;">7%</td>
+        <td style="text-align:right;">${moneySpan(bruttoNeg7, true)}</td>
+      </tr>
+    `);
+  }
+
+  anzahlungRow = rows.join("");
+}
 
   subtotal += anzahlungDeductNet;
   totalTax += anzahlungDeductTax;
@@ -5187,17 +5883,16 @@ const docDatum = isStorno
   const notizen = getVal(`${type}-notizen`);
 
   let zahlungsbedingungen = "";
-  if (type === "rechnung") {
-    zahlungsbedingungen = `
-      <div class="preview-section zahlungsblock">
-        <h3>Zahlungsbedingungen</h3>
-        <p>Bitte begleichen Sie den Rechnungsbetrag sofort nach Rechnungserhalt.</p>
-        <p>Als Verwendungszweck geben Sie bitte die Rechnungsnummer an.</p>
-        <p>Bankverbindung:</p>
-        ${bankBlockHtml()}
-      </div>
-    `;
-  }
+if (type === "rechnung") {
+  zahlungsbedingungen = `
+    <div class="preview-section zahlungsblock">
+      <h3>Zahlungsbedingungen</h3>
+      <p>Bitte begleichen Sie den Rechnungsbetrag sofort nach Rechnungserhalt.</p>
+      <p>Als Verwendungszweck geben Sie bitte die Rechnungsnummer an.</p>
+      ${bankBlockHtml()}
+    </div>
+  `;
+}
 
   let anzahlungInfo = "";
   if (type === "auftragsbestaetigung") {
@@ -5222,78 +5917,77 @@ const docDatum = isStorno
   }
 
   const previewHTML = `
-    <table style="width:100%; border:none; border-collapse:collapse;">
-      <tfoot style="display: table-footer-group;">
-        <tr><td style="padding:0; border:none;"><div style="height: 22mm;"></div></td></tr>
-      </tfoot>
-      <tbody style="display: table-row-group;">
-        <tr><td style="padding:0; border:none;">
+  <table class="print-shell">
+    <thead>
+      <tr>
+        <td>
           <div class="preview-header">
-      <img src="${escapeHtml(COMPANY.logoUrl)}" alt="Warnow Moments Logo" class="preview-logo">
-      <div class="preview-company">
-        <strong>${escapeHtml(COMPANY.name)}</strong><br>
-        ${escapeHtml(COMPANY.address1)}<br>
-        ${escapeHtml(COMPANY.zipCity)}<br>
-        Tel: ${escapeHtml(COMPANY.phone)}<br>
-        E-Mail: <a href="mailto:${escapeHtml(COMPANY.email)}">${escapeHtml(COMPANY.email)}</a>
-      </div>
-    </div>
+            <img src="${escapeHtml(COMPANY.logoUrl)}" alt="Warnow Moments Logo" class="preview-logo">
+            <div class="preview-company">
+              <strong>${escapeHtml(COMPANY.name)}</strong><br>
+              ${escapeHtml(COMPANY.address1)}<br>
+              ${escapeHtml(COMPANY.zipCity)}<br>
+              Tel: ${escapeHtml(COMPANY.phone)}<br>
+              E-Mail: <a href="mailto:${escapeHtml(COMPANY.email)}">${escapeHtml(COMPANY.email)}</a>
+            </div>
+          </div>
+        </td>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="print-body">
+          <div class="print-body-inner">   <!-- ← NEU: inneres div -->
+            <div class="preview-section">
+              <strong>${escapeHtml(kundeName)}</strong><br>
+              ${escapeHtml(kundeAdresse)}<br>
+              ${escapeHtml(kundePlz)} ${escapeHtml(kundeOrt)}
+            </div>
+            <h2 class="preview-title">${docMeta.title}</h2>
+            <div class="preview-section">
+              <p><strong>${docMeta.numberLabel}:</strong> ${escapeHtml(docNummer)}</p>
+              <p><strong>Datum:</strong> ${formatDate(docDatum)}</p>
+              ${additionalInfo}
+            </div>
+            <table class="preview-table">
+              <thead>
+                <tr>
+                  <th>Pos.</th>
+                  <th>Beschreibung</th>
+                  <th style="text-align:center;">Menge</th>
+                  <th style="text-align:right;">Einzelpreis</th>
+                  <th style="text-align:center;">MwSt.</th>
+                  <th style="text-align:right;">Gesamt</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${tableRows || `<tr><td colspan="6" style="color:#777;">Keine Positionen vorhanden.</td></tr>`}
+                ${anzahlungRow}
+              </tbody>
+            </table>
+            <div style="text-align:right; margin-top:20px;">
+              <p><strong>Zwischensumme:</strong> ${moneySpan(subtotal)}</p>
+              <p><strong>MwSt.:</strong> ${moneySpan(totalTax)}</p>
+              <p class="preview-total">Gesamtbetrag: ${moneySpan(total, true)}</p>
+            </div>
+            ${notizen ? `<div class="preview-section"><h3>Anmerkungen</h3><p style="white-space: pre-line;">${escapeHtml(notizen)}</p></div>` : ""}
+            ${anzahlungInfo}
+            ${zahlungsbedingungen}
+          </div>   <!-- ← print-body-inner schließen -->
+        </td>
+      </tr>
+    </tbody>
+  </table>
+<div class="print-footer">
+    <p>${escapeHtml(COMPANY.name)} | Geschäftsführer: Christoph Völz, Jens Lindloff-Röhse | Steuernummer: DE460718060</p>
+    <p>Sitz der Gesellschaft: Rostock | Registergericht: Amtsgericht Rostock | Handelsregisternummer: HRB 17240</p>
+  </div>
+`;
 
-    <div class="preview-section">
-      <strong>${escapeHtml(kundeName)}</strong><br>
-      ${escapeHtml(kundeAdresse)}<br>
-      ${escapeHtml(kundePlz)} ${escapeHtml(kundeOrt)}
-    </div>
-
-    <h2 class="preview-title">${docMeta.title}</h2>
-
-    <div class="preview-section">
-      <p><strong>${docMeta.numberLabel}:</strong> ${escapeHtml(docNummer)}</p>
-      <p><strong>Datum:</strong> ${formatDate(docDatum)}</p>
-      ${additionalInfo}
-    </div>
-
-    <table class="preview-table">
-      <thead>
-        <tr>
-          <th>Pos.</th>
-          <th>Beschreibung</th>
-          <th style="text-align:center;">Menge</th>
-          <th style="text-align:right;">Einzelpreis</th>
-          <th style="text-align:center;">MwSt.</th>
-          <th style="text-align:right;">Gesamt</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${tableRows || `<tr><td colspan="6" style="color:#777;">Keine Positionen vorhanden.</td></tr>`}
-        ${anzahlungRow}
-      </tbody>
-    </table>
-
-    <div style="text-align:right; margin-top:20px;">
-      <p><strong>Zwischensumme:</strong> ${moneySpan(subtotal)}</p>
-      <p><strong>MwSt.:</strong> ${moneySpan(totalTax)}</p>
-      <p class="preview-total">Gesamtbetrag: ${moneySpan(total, true)}</p>
-    </div>
-
-    ${notizen ? `<div class="preview-section"><h3>Anmerkungen</h3><p style="white-space: pre-line;">${escapeHtml(notizen)}</p></div>` : ""}
-
-    ${anzahlungInfo}
-    ${zahlungsbedingungen}
-
-        </td></tr>
-      </tbody>
-    </table>
-    <div class="preview-footer">
-      <p>${escapeHtml(COMPANY.name)} | Geschäftsführer: Christoph Völz, Jens Lindloff-Rühse | Steuernummer: DE460718060</p>
-      <p>Sitz der Gesellschaft: Rostock | Registergericht: Amtsgericht Rostock | Handelsregisternummer: HRB 17240</p>
-    </div>
-  `;
-
-  const previewContainer = document.getElementById(`${type}-preview`);
-  previewContainer.innerHTML = previewHTML;
-  previewContainer.classList.add("active");
-  previewContainer.scrollIntoView({behavior:"smooth"});
+const previewContainer = document.getElementById(`${type}-preview`);
+previewContainer.innerHTML = previewHTML;
+previewContainer.classList.add("active");
+previewContainer.scrollIntoView({ behavior: "smooth" });
 }
 
 function formatDate(dateString) {
@@ -6169,6 +6863,9 @@ window.addEventListener('load', async () => {
     setTextareaIfEmpty("auftragsbestaetigung-notizen", defaultTextAuftragsbestaetigung());
     setTextareaIfEmpty("rechnung-notizen", defaultTextRechnung());
     setTextareaIfEmpty("gutschrift-notizen", defaultTextGutschrift());
+    document.getElementById('request-refresh-btn')?.addEventListener('click', requestsRefreshUI);
+    document.getElementById('request-search-input')?.addEventListener('input', requestsRefreshUI);
+    document.getElementById('request-filter-active')?.addEventListener('change', requestsRefreshUI);
     addItem("angebot");
     addItem("rechnung");
     if (typeof bookingRefreshUI === 'function') bookingRefreshUI();
@@ -6248,6 +6945,10 @@ function switchTab(a, b){
 
   if (targetId === 'buchungen-panel' && typeof bookingRefreshUI === 'function') {
     try { bookingRefreshUI(); } catch (e) { console.error(e); }
+  }
+
+  if (targetId === 'anfragen-panel' && typeof requestsRefreshUI === 'function') {
+    try { requestsRefreshUI(); } catch (e) { console.error("Fehler beim Anfragen laden:", e); }
   }
 
   if (targetId === 'kalender-panel') {
