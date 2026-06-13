@@ -2163,7 +2163,7 @@ async function ensureReservationForIncomingRequest(row) {
     return { created: false, skipped: true, reason: "deleted" };
   }
 
-  const existingBookingId = String(row.converted_to_booking_id || '').trim();
+  const existingBookingId = String(row.converted_to_booking_id || row.convertedtobookingid || '').trim();
   if (existingBookingId) {
     return { created: false, skipped: true, reason: "already-linked" };
   }
@@ -2197,6 +2197,12 @@ async function ensureReservationForIncomingRequest(row) {
 
   const bookingId = typeof bookingUid === "function" ? bookingUid() : crypto.randomUUID();
 
+  const customerName = row.customer_name || row.customername || "";
+  const customerEmail = row.customer_email || row.customeremail || "";
+  const packageName = row.package_name || row.packagename || "";
+  const optionsText = row.options_text || row.optionstext || "";
+  const requestRef = row.request_number || row.requestnumber || row.id;
+
   const personsText = [
     row.persons ? `${row.persons} Erwachsene` : "",
     row.children ? `${row.children} Kinder` : ""
@@ -2204,9 +2210,9 @@ async function ensureReservationForIncomingRequest(row) {
 
   const noteParts = [
     "Reservierung automatisch aus Website-Anfrage",
-    row.packagename ? `Paket: ${row.packagename}` : "",
+    packageName ? `Paket: ${packageName}` : "",
     personsText ? `Teilnehmer: ${personsText}` : "",
-    row.optionstext ? `Optionen: ${row.optionstext}` : "",
+    optionsText ? `Optionen: ${optionsText}` : "",
     row.message ? `Nachricht: ${row.message}` : ""
   ].filter(Boolean);
 
@@ -2214,16 +2220,16 @@ async function ensureReservationForIncomingRequest(row) {
     id: bookingId,
     resourceId: BOOKING.RESOURCE_ID || BOOKING.RESOURCEID,
     status: "reserved",
-    customer: row.customername || "",
-    customerEmail: row.customeremail || "",
-    ref: row.request_number || row.id,
+    customer: customerName,
+    customerEmail: customerEmail,
+    ref: requestRef,
     note: noteParts.join("\n"),
     startMs,
     endMs
   });
 
   const requestUpdatePayload = {
-    status: "converted",
+    status: "in_progress",
     converted_to_booking_id: bookingId
   };
 
