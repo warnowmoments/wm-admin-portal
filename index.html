@@ -1550,41 +1550,52 @@ function bookingFindById(id) {
 async function bookingUpsert(obj) {
   const normalized = {
     id: obj.id,
-    resourceId: obj.resourceId || obj.resource_id || BOOKING.RESOURCE_ID || null,
+    resourceId: obj.resourceId || obj.resource_id || BOOKING.RESOURCEID || BOOKING.RESOURCE_ID || null,
     customer: obj.customer || null,
     customerEmail: obj.customerEmail || obj.customer_email || null,
     ref: obj.ref || null,
     note: obj.note || null,
-    status: String(obj.status || 'reserved').toLowerCase(),
+    status: String(obj.status || "reserved").toLowerCase(),
     startMs: obj.startMs ?? (obj.start_time ? new Date(obj.start_time).getTime() : null),
     endMs: obj.endMs ?? (obj.end_time ? new Date(obj.end_time).getTime() : null),
-    google_event_id: obj.google_event_id || obj.google_Event_Id || null,
-    google_synced_at: obj.google_synced_at || obj.google_Synced_At || null,
-    google_sync_error: obj.google_sync_error || obj.google_Sync_Error || null,
-    calendar_sequence: obj.calendar_sequence ?? obj.calendar_Sequence ?? 0,
+    googleEventId: obj.googleEventId || obj.google_event_id || null,
+    googleSyncedAt: obj.googleSyncedAt || obj.google_synced_at || null,
+    googleSyncError: obj.googleSyncError || obj.google_sync_error || null,
+    calendarSequence: obj.calendarSequence ?? obj.calendar_sequence ?? 0,
     offerValidUntilIso: obj.offerValidUntilIso || obj.offer_valid_until || null
   };
 
   const previous = currentBookings.find(x => x.id === normalized.id) || null;
-  const oldStatus = String(previous?.status || '').toLowerCase();
+  const oldStatus = String(previous?.status || "").toLowerCase();
   const newStatus = normalized.status;
+
   const timeChanged =
-    previous &&
+    !!previous &&
     (
-      String(previous.startMs || '') !== String(normalized.startMs || '') ||
-      String(previous.endMs || '') !== String(normalized.endMs || '')
+      String(previous.startMs ?? "") !== String(normalized.startMs ?? "") ||
+      String(previous.endMs ?? "") !== String(normalized.endMs ?? "")
     );
 
-  const noteChanged = previous && (String(previous.notes || '') !== String(normalized.notes || ''));
+  const noteChanged =
+    !!previous &&
+    String(previous.note ?? "") !== String(normalized.note ?? "");
 
   const idx = currentBookings.findIndex(x => x.id === normalized.id);
   if (idx >= 0) {
-    currentBookings[idx] = { ...currentBookings[idx], ...normalized, updatedAt: Date.now() };
+    currentBookings[idx] = {
+      ...currentBookings[idx],
+      ...normalized,
+      updatedAt: Date.now()
+    };
   } else {
-    currentBookings.push({ ...normalized, createdAt: Date.now(), updatedAt: Date.now() });
+    currentBookings.push({
+      ...normalized,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
   }
 
-  if (typeof sb === 'undefined' || !sb) return;
+  if (typeof sb === "undefined" || !sb) return;
 
   try {
     const dbObj = {
@@ -1595,10 +1606,10 @@ async function bookingUpsert(obj) {
       end_time: normalized.endMs ? new Date(normalized.endMs).toISOString() : null,
       status: normalized.status,
       note: normalized.note,
-      google_event_id: normalized.google_event_id,
-      google_synced_at: normalized.google_synced_at,
-      google_sync_error: normalized.google_sync_error,
-      calendar_sequence: normalized.calendar_sequence,
+      google_event_id: normalized.googleEventId,
+      google_synced_at: normalized.googleSyncedAt,
+      google_sync_error: normalized.googleSyncError,
+      calendar_sequence: normalized.calendarSequence,
       customer_email: normalized.customerEmail
     };
 
@@ -1607,14 +1618,15 @@ async function bookingUpsert(obj) {
       oldStatus,
       newStatus,
       timeChanged,
+      noteChanged,
       customer_email: dbObj.customer_email,
       start_time: dbObj.start_time,
       end_time: dbObj.end_time
     });
 
     const { error } = await sb
-      .from('wm_bookings')
-      .upsert(dbObj, { onConflict: 'id' });
+      .from("wm_bookings")
+      .upsert(dbObj, { onConflict: "id" });
 
     if (error) {
       console.error("Fehler beim Speichern in der Cloud", error);
@@ -1623,44 +1635,48 @@ async function bookingUpsert(obj) {
 
     console.log("[DBG bookingUpsert] supabase upsert ok", dbObj.id);
 
-    if (newStatus === 'reserved' && (oldStatus !== 'reserved' || timeChanged || noteChanged)) {
-  try {
-    console.log("[DBG bookingUpsert] reserved -> smart-api", dbObj.id);
-    await sb.functions.invoke('smart-api', { body: { booking_id: dbObj.id } });
-  } catch (syncErr) {
-    console.error("smart-api Fehler bei Reservierung", syncErr);
-  }
-}
+    if (newStatus === "reserved" && (oldStatus !== "reserved" || timeChanged || noteChanged)) {
+      try {
+        console.log("[DBG bookingUpsert] reserved -> smart-api", dbObj.id);
+        await sb.functions.invoke("smart-api", { body: { booking_id: dbObj.id } });
+      } catch (syncErr) {
+        console.error("smart-api Fehler bei Reservierung", syncErr);
+      }
+    }
 
-if (newStatus === 'confirmed' && oldStatus !== 'confirmed') {
-  try {
-    console.log("[DBG bookingUpsert] confirmed -> smart-api", dbObj.id);
-    await sb.functions.invoke('smart-api', { body: { booking_id: dbObj.id } });
-  } catch (syncErr) {
-    console.error("smart-api Fehler bei Bestätigung", syncErr);
-  }
-}
+    if (newStatus === "confirmed" && oldStatus !== "confirmed") {
+      try {
+        console.log("[DBG bookingUpsert] confirmed -> smart-api", dbObj.id);
+        await sb.functions.invoke("smart-api", { body: { booking_id: dbObj.id } });
+      } catch (syncErr) {
+        console.error("smart-api Fehler bei Bestätigung", syncErr);
+      }
+    }
 
-if (newStatus === 'confirmed' && oldStatus === 'confirmed' && (timeChanged || noteChanged)) {
-  try {
-    console.log("[DBG bookingUpsert] confirmed time change -> smart-api", dbObj.id);
-    await sb.functions.invoke('smart-api', { body: { booking_id: dbObj.id } });
-  } catch (syncErr) {
-    console.error("smart-api Fehler bei Terminänderung", syncErr);
-  }
-}
+    if (newStatus === "confirmed" && oldStatus === "confirmed" && (timeChanged || noteChanged)) {
+      try {
+        console.log("[DBG bookingUpsert] confirmed time change -> smart-api", dbObj.id);
+        await sb.functions.invoke("smart-api", { body: { booking_id: dbObj.id } });
+      } catch (syncErr) {
+        console.error("smart-api Fehler bei Terminänderung", syncErr);
+      }
+    }
 
-if (newStatus === 'cancelled' && oldStatus !== 'cancelled') {
-  try {
-    console.log("[DBG bookingUpsert] cancelled -> smart-api", dbObj.id);
-    await sb.functions.invoke('smart-api', { body: { booking_id: dbObj.id } });
-  } catch (syncErr) {
-    console.error("smart-api Delete Fehler", syncErr);
-  }
-}
+    if (newStatus === "cancelled" && oldStatus !== "cancelled") {
+      try {
+        console.log("[DBG bookingUpsert] cancelled -> smart-api", dbObj.id);
+        await sb.functions.invoke("smart-api", { body: { booking_id: dbObj.id } });
+      } catch (syncErr) {
+        console.error("smart-api Delete Fehler", syncErr);
+      }
+    }
 
-    if (typeof savePublicCalendarToSupabase === 'function') {
-      if (newStatus === 'reserved' || newStatus === 'confirmed' || newStatus === 'cancelled') {
+    if (typeof savePublicCalendarToSupabase === "function") {
+      if (
+        newStatus === "reserved" ||
+        newStatus === "confirmed" ||
+        newStatus === "cancelled"
+      ) {
         await savePublicCalendarToSupabase();
         console.log("[DBG bookingUpsert] savePublicCalendarToSupabase done", dbObj.id);
       }
@@ -2158,18 +2174,21 @@ const itemsHtml = itemsText
 }
 
 async function ensureReservationForIncomingRequest(row) {
-  if (!row || !row.id) return { created: false, skipped: true, reason: "missing-row" };
-  if (String(row.deleted_at || row.deletedat || '').trim()) {
+  if (!row || !row.id) {
+    return { created: false, skipped: true, reason: "missing-row" };
+  }
+
+  if (String(row.deleted_at || "").trim()) {
     return { created: false, skipped: true, reason: "deleted" };
   }
 
-  const existingBookingId = String(row.converted_to_booking_id || row.convertedtobookingid || '').trim();
+  const existingBookingId = String(row.converted_to_booking_id || "").trim();
   if (existingBookingId) {
     return { created: false, skipped: true, reason: "already-linked" };
   }
 
-  const startRaw = row.start_time || row.starttime || null;
-  const endRaw = row.end_time || row.endtime || null;
+  const startRaw = row.start_time || null;
+  const endRaw = row.end_time || null;
 
   const startMs = startRaw ? new Date(startRaw).getTime() : NaN;
   const endMs = endRaw ? new Date(endRaw).getTime() : NaN;
@@ -2182,9 +2201,10 @@ async function ensureReservationForIncomingRequest(row) {
     await loadBookingsFromCloud();
   }
 
-  const conflicts = typeof bookingConflicts === "function"
-    ? bookingConflicts(startMs, endMs, null)
-    : [];
+  const conflicts =
+    typeof bookingConflicts === "function"
+      ? bookingConflicts(startMs, endMs, null)
+      : [];
 
   if (Array.isArray(conflicts) && conflicts.length > 0) {
     return {
@@ -2195,13 +2215,14 @@ async function ensureReservationForIncomingRequest(row) {
     };
   }
 
-  const bookingId = typeof bookingUid === "function" ? bookingUid() : crypto.randomUUID();
+  const bookingId =
+    typeof bookingUid === "function" ? bookingUid() : crypto.randomUUID();
 
-  const customerName = row.customer_name || row.customername || "";
-  const customerEmail = row.customer_email || row.customeremail || "";
-  const packageName = row.package_name || row.packagename || "";
-  const optionsText = row.options_text || row.optionstext || "";
-  const requestRef = row.request_number || row.requestnumber || row.id;
+  const customerName = row.customer_name || "";
+  const customerEmail = row.customer_email || "";
+  const packageName = row.package_name || "";
+  const optionsText = row.options_text || "";
+  const requestRef = row.source_request_key || row.id;
 
   const personsText = [
     row.persons ? `${row.persons} Erwachsene` : "",
@@ -2218,10 +2239,10 @@ async function ensureReservationForIncomingRequest(row) {
 
   await bookingUpsert({
     id: bookingId,
-    resourceId: BOOKING.RESOURCE_ID || BOOKING.RESOURCEID,
+    resourceId: BOOKING.RESOURCEID || BOOKING.RESOURCE_ID || null,
     status: "reserved",
     customer: customerName,
-    customerEmail: customerEmail,
+    customerEmail,
     ref: requestRef,
     note: noteParts.join("\n"),
     startMs,
