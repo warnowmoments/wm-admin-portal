@@ -2391,21 +2391,6 @@ async function requestsRefreshUI() {
   }
 }
 
-async function requestSetInProgress(id) {
-  try {
-    const { error } = await sb
-      .from('wm_booking_requests')
-      .update({ status: 'in_progress' })
-      .eq('id', id);
-
-    if (error) throw error;
-    await requestsRefreshUI();
-  } catch (e) {
-    console.error('requestSetInProgress Fehler:', e);
-    alert('Status konnte nicht aktualisiert werden: ' + (e.message || e));
-  }
-}
-
 async function requestToggleDeleted(id, makeDeleted) {
   try {
     const payload = makeDeleted
