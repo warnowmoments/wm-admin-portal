@@ -4613,7 +4613,11 @@ if (!bookingId && existingAB?.booking_id) {
       vorhandeneAnzahlung = Number(existingAB?.deposit_amount || 0);
       vorhandeneAnzahlungBezahlt = Number(existingAB?.deposit_paid || 0);
 
+      // restbetrag (für den Beleg): Gesamt minus das, was als Anzahlung vereinbart war
       const restbetrag = Number(Math.max(0, gesamtBrutto - vorhandeneAnzahlung).toFixed(2));
+      
+      // tatsaechlichOffen (fürs Dashboard): Gesamt minus das, was WIRKLICH schon auf dem Konto ist
+      const tatsaechlichOffen = Number(Math.max(0, gesamtBrutto - vorhandeneAnzahlungBezahlt).toFixed(2));
 
       const paymentPayload = {
         booking_id: bookingId,
@@ -4683,7 +4687,7 @@ if (!bookingId && existingAB?.booking_id) {
         invoice_amount_net: gesamtNetto,
         invoice_tax_amount: gesamtSteuer,
         deposit_amount: Number(vorhandeneAnzahlung.toFixed(2)),
-        open_amount: restbetrag,
+        open_amount: tatsaechlichOffen,
         tax_rate: taxRate,
         total_amount_19: Number(brutto19.toFixed(2)),
         total_amount_7: Number(brutto7.toFixed(2)),
