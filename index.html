@@ -479,9 +479,14 @@
 
 <div class="container">
   <div class="header">
-  <div style="display: flex; justify-content: flex-end; margin-bottom: -15px; position: relative; z-index: 10;">
-   	 <button onclick="logout()" style="padding: 8px 16px; font-size: 0.9em; background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.5); border-radius: 6px; cursor: pointer;">Abmelden</button>
-  </div>
+  <div style="display: flex; justify-content: flex-end; gap: 10px; margin-bottom: -15px; position: relative; z-index: 10;">
+  <button type="button" onclick="resetCurrentDocumentForm()" style="padding: 8px 16px; font-size: 0.9em; background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.5); border-radius: 6px; cursor: pointer;">
+    Neuer Vorgang
+  </button>
+  <button type="button" onclick="logout()" style="padding: 8px 16px; font-size: 0.9em; background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.5); border-radius: 6px; cursor: pointer;">
+    Abmelden
+  </button>
+</div>
 
     <h1>CJ WARNOW MOMENTS UG (haftungsbeschränkt)</h1>
     <p>Angebots-, Auftragsbestätigungs- und Rechnungsvordrucke</p>
@@ -7282,6 +7287,131 @@ function toDT(ms) {
   if (!ms) return '';
   const d = new Date(ms);
   return d.toISOString().slice(0,16);
+}
+
+function resetCurrentDocumentForm() {
+  const angebotPanel = document.getElementById("angebot-panel");
+  const abPanel = document.getElementById("auftragsbestaetigung-panel");
+  const rechnungPanel = document.getElementById("rechnung-panel");
+
+  const today = new Date().toISOString().split("T")[0];
+
+  const isVisible = (el) => {
+  return !!el && el.classList.contains("active");
+};
+
+  if (isVisible(angebotPanel)) {
+    resetAngebotForm(today);
+    return;
+  }
+
+  if (isVisible(abPanel)) {
+    resetAuftragsbestaetigungForm(today);
+    return;
+  }
+
+  if (isVisible(rechnungPanel)) {
+    resetRechnungForm(today);
+    return;
+  }
+}
+
+function resetAngebotForm(today) {
+  setIfExists("angebot-nummer", "");
+  setIfExists("angebot-datum", today);
+  setIfExists("angebot-leistung", "");
+  setIfExists("angebot-gueltig", "");
+  setIfExists("angebot-kunde-name", "");
+  setIfExists("angebot-kunde-adresse", "");
+  setIfExists("angebot-kunde-plz", "");
+  setIfExists("angebot-kunde-ort", "");
+  setIfExists("angebot-kunde-email", "");
+  setIfExists("angebot-booking-id", "");
+  setIfExists("angebot-booking-start", "");
+  setIfExists("angebot-booking-end", "");
+  setIfExists("angebot-request-id", "");
+  setIfExists("angebot-notizen", defaultTextAngebot());
+  setIfExists("angebot-document-id", "");
+  setIfExists("booking-edit-id", "");
+
+const statusEl = document.getElementById("angebot-booking-status");
+if (statusEl) statusEl.innerHTML = "";
+
+const preview = document.getElementById("angebot-preview");
+if (preview) preview.innerHTML = "";
+
+  const itemsContainer = document.getElementById("angebot-items");
+  if (itemsContainer) itemsContainer.innerHTML = "";
+  itemCounters.angebot = 0;
+  addItem("angebot");
+}
+
+function resetAuftragsbestaetigungForm(today) {
+  setIfExists("auftragsbestaetigung-nummer", "");
+  setIfExists("auftragsbestaetigung-datum", today);
+  setIfExists("auftragsbestaetigung-leistung", "");
+  setIfExists("auftragsbestaetigung-referenz-angebot", "");
+  setIfExists("auftragsbestaetigung-kunde-name", "");
+  setIfExists("auftragsbestaetigung-kunde-adresse", "");
+  setIfExists("auftragsbestaetigung-kunde-plz", "");
+  setIfExists("auftragsbestaetigung-kunde-ort", "");
+  setIfExists("auftragsbestaetigung-kunde-email", "");
+  setIfExists("auftragsbestaetigung-booking-id", "");
+  setIfExists("auftragsbestaetigung-booking-start", "");
+  setIfExists("auftragsbestaetigung-booking-end", "");
+  setIfExists("auftragsbestaetigung-anzahlung-betrag", "0.00");
+  setIfExists("auftragsbestaetigung-anzahlung-betrag-19", "0.00");
+  setIfExists("auftragsbestaetigung-anzahlung-betrag-7", "0.00");
+  setIfExists("auftragsbestaetigung-anzahlung-mwst", "19");
+  setIfExists("auftragsbestaetigung-anzahlung-faellig", "");
+  setIfExists("auftragsbestaetigung-notizen", defaultTextAuftragsbestaetigung());
+  setIfExists("auftragsbestaetigung-document-id", "");
+abDepositAuto = true;
+
+const preview = document.getElementById("auftragsbestaetigung-preview");
+if (preview) preview.innerHTML = "";
+
+  const itemsContainer = document.getElementById("auftragsbestaetigung-items");
+  if (itemsContainer) itemsContainer.innerHTML = "";
+  itemCounters.auftragsbestaetigung = 0;
+  addItem("auftragsbestaetigung");
+}
+
+function resetRechnungForm(today) {
+  setIfExists("rechnung-nummer", "");
+  setIfExists("rechnung-document-id", "");
+  setIfExists("rechnung-datum", today);
+  setIfExists("rechnung-leistung", "");
+  setIfExists("rechnung-faellig", today);
+  setIfExists("rechnung-referenz-ab", "");
+  setIfExists("rechnung-referenz-angebot", "");
+  setIfExists("rechnung-kunde-name", "");
+  setIfExists("rechnung-kunde-adresse", "");
+  setIfExists("rechnung-kunde-plz", "");
+  setIfExists("rechnung-kunde-ort", "");
+  setIfExists("rechnung-kunde-email", "");
+  setIfExists("rechnung-booking-id", "");
+  setIfExists("rechnung-booking-start", "");
+  setIfExists("rechnung-booking-end", "");
+  setIfExists("rechnung-anzahlung-betrag", "0.00");
+  setIfExists("rechnung-anzahlung-betrag-19", "0.00");
+  setIfExists("rechnung-anzahlung-betrag-7", "0.00");
+  setIfExists("rechnung-anzahlung-mwst", "19");
+  setIfExists("rechnung-anzahlung-faellig", "");
+  setIfExists("rechnung-anzahlung-in-tabelle", "nein");
+  setIfExists("rechnung-notizen", defaultTextRechnung());
+  setIfExists("rechnung-storno-grund", "");
+
+  const preview = document.getElementById("rechnung-preview");
+  if (preview) preview.innerHTML = "";
+
+  const stornoPreview = document.getElementById("stornorechnung-preview");
+  if (stornoPreview) stornoPreview.innerHTML = "";
+
+  const itemsContainer = document.getElementById("rechnung-items");
+  if (itemsContainer) itemsContainer.innerHTML = "";
+  itemCounters.rechnung = 0;
+  addItem("rechnung");
 }
 
 function bookingEditAction(id) {
