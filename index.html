@@ -5385,12 +5385,13 @@ function loadAuftragsbestaetigungJsonForRechnung(event) {
   if (!file) return;
 
   const r = new FileReader();
-  r.onload = () => {
+  r.onload = async function () {
     try {
       const ab = JSON.parse(r.result);
-      fuelleRechnungAusAuftragsbestaetigung(ab);
+      await fuelleRechnungAusAuftragsbestaetigung(ab);
       alert("Auftragsbestätigung übernommen.");
-    } catch {
+    } catch (e) {
+      console.error("Fehler beim Laden der AB für Rechnung:", e);
       alert("Ungültige AB-JSON.");
     }
   };
@@ -5398,10 +5399,10 @@ function loadAuftragsbestaetigungJsonForRechnung(event) {
   event.target.value = "";
 }
 
-function fuelleRechnungAusAuftragsbestaetigung(ab) {
+async function fuelleRechnungAusAuftragsbestaetigung(ab) {
   if (!ab) return;
 
-    const rechnungBookingId =
+  const rechnungBookingId =
     ab.bookingId ||
     ab.booking?.bookingId ||
     ab.booking?.id ||
@@ -5442,7 +5443,12 @@ function fuelleRechnungAusAuftragsbestaetigung(ab) {
 
       setIfExists(`rechnung-desc-${id}`, pos.beschreibung || "");
       setIfExists(`rechnung-qty-${id}`, pos.menge != null ? pos.menge : 1);
-      setIfExists(`rechnung-price-${id}`, pos.einzelpreisBrutto != null ? pos.einzelpreisBrutto : (pos.einzelpreis != null ? pos.einzelpreis : 0));
+      setIfExists(
+        `rechnung-price-${id}`,
+        pos.einzelpreisBrutto != null
+          ? pos.einzelpreisBrutto
+          : (pos.einzelpreis != null ? pos.einzelpreis : 0)
+      );
       setIfExists(`rechnung-tax-${id}`, pos.mwst != null ? pos.mwst : 19);
     });
   } else {
@@ -5450,25 +5456,60 @@ function fuelleRechnungAusAuftragsbestaetigung(ab) {
   }
 
   const anz = ab.anzahlung || {};
-const anzBetrag = parseFloat(anz.betragBrutto ?? 0) || 0;
-let anzBetrag19 = parseFloat(anz.betragBrutto19 ?? 0) || 0;
-let anzBetrag7 = parseFloat(anz.betragBrutto7 ?? 0) || 0;
-const anzMwst = String(anz.mwst ?? "19");
 
-if (anzBetrag > 0 && anzBetrag19 <= 0 && anzBetrag7 <= 0) {
-  if (anzMwst === "7") {
-    anzBetrag7 = anzBetrag;
-  } else {
-    anzBetrag19 = anzBetrag;
+  const agreedTotal = parseFloat(anz.betragBrutto ?? 0) || 0;
+  const agreed19 = parseFloat(anz.betragBrutto19 ?? 0) || 0;
+  const agreed7 = parseFloat(anz.betragBrutto7 ?? 0) || 0;
+  const agreedMwst = String(anz.mwst ?? "19");
+
+  let actualPaid = 0;
+
+  try {
+    if (typeof resolveDocumentBookingContext === "function") {
+      const context = await resolveDocumentBookingContext("rechnung", {
+        nummer: getVal("rechnung-nummer") || "",
+        bookingId: rechnungBookingId || null,
+        referenzAuftragsbestaetigung: ab.nummer || "",
+        referenzAngebot: ab.referenzAngebot || "",
+        kunde: ab.kunde || {},
+        positionen: Array.isArray(ab.positionen) ? ab.positionen : []
+      });
+
+      actualPaid = Number(context?.actualDepositPaid || 0);
+    }
+  } catch (err) {
+    console.warn("Konnte tatsächliche Anzahlung nicht ermitteln, fallback 0.00:", err);
+    actualPaid = 0;
   }
-}
 
-setIfExists("rechnung-anzahlung-betrag", anzBetrag.toFixed(2));
-setIfExists("rechnung-anzahlung-betrag-19", anzBetrag19.toFixed(2));
-setIfExists("rechnung-anzahlung-betrag-7", anzBetrag7.toFixed(2));
-setIfExists("rechnung-anzahlung-mwst", anzMwst);
-setIfExists("rechnung-anzahlung-faellig", anz.faellig || "");
-setIfExists("rechnung-anzahlung-in-tabelle", anz.inTabelle || "ja");
+  actualPaid = Math.max(0, Number(actualPaid.toFixed(2)));
+
+  let actualPaid19 = 0;
+  let actualPaid7 = 0;
+
+  if (actualPaid > 0) {
+    if (agreed19 > 0 && agreed7 > 0 && agreedTotal > 0) {
+      const ratio19 = agreed19 / agreedTotal;
+      actualPaid19 = Number((actualPaid * ratio19).toFixed(2));
+      actualPaid7 = Number((actualPaid - actualPaid19).toFixed(2));
+    } else if (agreed7 > 0 || agreedMwst === "7") {
+      actualPaid7 = actualPaid;
+    } else {
+      actualPaid19 = actualPaid;
+    }
+  }
+
+  const actualMwst =
+    actualPaid19 > 0 && actualPaid7 > 0
+      ? "gemischt"
+      : (actualPaid7 > 0 ? "7" : "19");
+
+  setIfExists("rechnung-anzahlung-betrag", actualPaid.toFixed(2));
+  setIfExists("rechnung-anzahlung-betrag-19", actualPaid19.toFixed(2));
+  setIfExists("rechnung-anzahlung-betrag-7", actualPaid7.toFixed(2));
+  setIfExists("rechnung-anzahlung-mwst", actualMwst);
+  setIfExists("rechnung-anzahlung-faellig", anz.faellig || "");
+  setIfExists("rechnung-anzahlung-in-tabelle", actualPaid > 0 ? (anz.inTabelle || "ja") : "nein");
 
   setIfExists("rechnung-notizen", defaultTextRechnung());
 }
