@@ -517,6 +517,14 @@
         <input type="email" id="angebot-kunde-email" placeholder="name@beispiel.de">
       </div>
       <div class="form-group">
+  <label for="angebot-kunde-telefon">Telefonnummer</label>
+  <input
+    type="tel"
+    id="angebot-kunde-telefon"
+    placeholder="+49 171 1234567"
+    autocomplete="tel">
+</div>
+      <div class="form-group">
         <label for="angebot-kunde-adresse">Adresse *</label>
         <input type="text" id="angebot-kunde-adresse" placeholder="Musterstraße 123">
       </div>
@@ -643,6 +651,15 @@
         <label for="auftragsbestaetigung-kunde-email">E-Mail</label>
         <input type="email" id="auftragsbestaetigung-kunde-email" placeholder="name@beispiel.de">
       </div>
+      <div class="form-group">
+  <label for="auftragsbestaetigung-kunde-telefon">Telefonnummer *</label>
+  <input
+    type="tel"
+    id="auftragsbestaetigung-kunde-telefon"
+    placeholder="+49 171 1234567"
+    autocomplete="tel"
+    required>
+</div>
       <div class="form-group">
         <label for="auftragsbestaetigung-kunde-adresse">Adresse *</label>
         <input type="text" id="auftragsbestaetigung-kunde-adresse">
@@ -1466,6 +1483,7 @@ var abDepositAuto = true;
         status: dbItem.status,
         customer: dbItem.customer || '',
 	customer_email: dbItem.customer_email || '',
+        customerPhone: dbItem.customer_phone || '',
         ref: dbItem.ref || '',
         note: dbItem.note || '',
         startMs: dbItem.start_time ? new Date(dbItem.start_time).getTime() : null,
@@ -1558,6 +1576,7 @@ async function bookingUpsert(obj) {
     resourceId: obj.resourceId || obj.resource_id || BOOKING.RESOURCEID || BOOKING.RESOURCE_ID || null,
     customer: obj.customer || null,
     customerEmail: obj.customerEmail || obj.customer_email || null,
+    customerPhone: obj.customerPhone ?? obj.customer_phone ?? null,
     ref: obj.ref || null,
     note: obj.note || null,
     status: String(obj.status || "reserved").toLowerCase(),
@@ -1606,6 +1625,8 @@ async function bookingUpsert(obj) {
     const dbObj = {
       id: normalized.id,
       customer: normalized.customer,
+      customer_email: normalized.customerEmail,
+      customer_phone: normalized.customerPhone,
       ref: normalized.ref,
       start_time: normalized.startMs ? new Date(normalized.startMs).toISOString() : null,
       end_time: normalized.endMs ? new Date(normalized.endMs).toISOString() : null,
@@ -2225,6 +2246,7 @@ async function ensureReservationForIncomingRequest(row) {
 
   const customerName = row.customer_name || "";
   const customerEmail = row.customer_email || "";
+  const customerPhone = row.customer_phone;
   const packageName = row.package_name || "";
   const optionsText = row.options_text || "";
   const requestRef = row.source_request_key || row.id;
@@ -2248,6 +2270,7 @@ async function ensureReservationForIncomingRequest(row) {
     status: "reserved",
     customer: customerName,
     customerEmail,
+    customerPhone,
     ref: requestRef,
     note: noteParts.join("\n"),
     startMs,
@@ -3213,6 +3236,7 @@ const note = joinBookingNoteParts(
     status: "reserved",
     customer,
     customer_email,
+    customer_phone,
     ref,
     note,
     startMs: chk.startMs,
@@ -3472,7 +3496,9 @@ function buildAngebotJson() {
       adresse: getVal("angebot-kunde-adresse"),
       plz: getVal("angebot-kunde-plz"),
       ort: getVal("angebot-kunde-ort"),
-      email: getVal("angebot-kunde-email")
+      email: getVal("angebot-kunde-email"),
+      phone: getVal("angebot-kunde-telefon")
+
     },
     leistungsdatum: getVal("angebot-leistung"),
     gueltigBis: getVal("angebot-gueltig"),
@@ -3498,7 +3524,9 @@ function buildAuftragsbestaetigungJson() {
       adresse: getVal("auftragsbestaetigung-kunde-adresse"),
       plz: getVal("auftragsbestaetigung-kunde-plz"),
       ort: getVal("auftragsbestaetigung-kunde-ort"),
-      email: getVal("auftragsbestaetigung-kunde-email")
+      email: getVal("auftragsbestaetigung-kunde-email"),
+      phone: getVal("auftragsbestaetigung-kunde-telefon")
+
     },
     leistungsdatum: getVal("auftragsbestaetigung-leistung"),
     positionen: collectItems("auftragsbestaetigung"),
@@ -3533,7 +3561,8 @@ function buildRechnungJson() {
       adresse: getVal('rechnung-kunde-adresse'),
       plz: getVal('rechnung-kunde-plz'),
       ort: getVal('rechnung-kunde-ort'),
-      email: getVal('rechnung-kunde-email') || ''
+      email: getVal('rechnung-kunde-email'),
+      phone: getVal("rechnung-kunde-telefon")|| ''
     },
     leistungsdatum: getVal('rechnung-leistung'),
     faellig: getVal('rechnung-faellig') || rechnungsdatum,
@@ -4458,6 +4487,12 @@ async function saveAuftragsbestaetigungJsonLocally() {
     return;
   }
 
+  const phone = getVal("auftragsbestaetigung-kunde-telefon").trim();
+  if (!phone) {
+    alert("Bitte die Telefonnummer des Kunden eintragen, bevor du die Auftragsbestätigung speicherst.");
+    return;
+  }
+
   const data = buildAuftragsbestaetigungJson();
   if (!data.nummer) {
     alert("Bitte eine Auftragsbestätigungsnummer eingeben.");
@@ -4465,35 +4500,35 @@ async function saveAuftragsbestaetigungJsonLocally() {
   }
 
   const context = await resolveDocumentBookingContext({
-  type: 'auftragsbestaetigung',
-  data
-});
+    type: 'auftragsbestaetigung',
+    data
+  });
 
-let bookingId =
-  context?.bookingId ||
-  data.bookingId ||
-  data.booking?.bookingId ||
-  data.booking?.id ||
-  getVal('auftragsbestaetigung-booking-id') ||
-  null;
+  let bookingId =
+    context?.bookingId ||
+    data.bookingId ||
+    data.booking?.bookingId ||
+    data.booking?.id ||
+    getVal('auftragsbestaetigung-booking-id') ||
+    null;
 
-if (bookingId) {
-  data.bookingId = bookingId;
-  data.booking = {
-    ...(data.booking || {}),
-    bookingId,
-    id: data.booking?.id || bookingId
-  };
-  setIfExists('auftragsbestaetigung-booking-id', bookingId);
+  if (bookingId) {
+    data.bookingId = bookingId;
+    data.booking = {
+      ...(data.booking || {}),
+      bookingId,
+      id: data.booking?.id || bookingId
+    };
+    setIfExists('auftragsbestaetigung-booking-id', bookingId);
 
-  const ok = await ensureBookingConfirmedForAB({ mode: 'save' });
-  if (!ok) {
-    alert("Die Buchung konnte nicht auf bestätigt gesetzt werden. AB-Speicherung wurde abgebrochen.");
-    return;
+    const ok = await ensureBookingConfirmedForAB({ mode: 'save' });
+    if (!ok) {
+      alert("Die Buchung konnte nicht auf bestätigt gesetzt werden. AB-Speicherung wurde abgebrochen.");
+      return;
+    }
   }
-}
 
-saveJsonLocally(data, data.nummer + ".json");
+  saveJsonLocally(data, data.nummer + ".json");
 
   if (typeof sb !== "undefined" && sb) {
     try {
@@ -4519,144 +4554,145 @@ saveJsonLocally(data, data.nummer + ".json");
   }
 
   if (typeof sb !== "undefined" && sb) {
-  try {
-    const abNumber = String(data.nummer || '').trim();
-    const abDatum = data.datum || new Date().toISOString().split('T')[0];
-    const referenzAngebot = data.referenzAngebot || data.angebotNummer || null;
-    const anzahlungBrutto = roundMoney(data?.anzahlung?.betragBrutto || 0);
-    const anzahlungFaellig = data?.anzahlung?.faellig || null;
+    try {
+      const abNumber = String(data.nummer || '').trim();
+      const abDatum = data.datum || new Date().toISOString().split('T')[0];
+      const referenzAngebot = data.referenzAngebot || data.angebotNummer || null;
+      const anzahlungBrutto = roundMoney(data?.anzahlung?.betragBrutto || 0);
+      const anzahlungFaellig = data?.anzahlung?.faellig || null;
 
-    const context = await resolveDocumentBookingContext({
-      type: 'auftragsbestaetigung',
-      data
-    });
+      const context = await resolveDocumentBookingContext({
+        type: 'auftragsbestaetigung',
+        data
+      });
 
-    let bookingId =
-      context?.bookingId ||
-      data.bookingId ||
-      data.booking?.bookingId ||
-      data.booking?.id ||
-      getVal('auftragsbestaetigung-booking-id') ||
-      null;
+      let bookingId =
+        context?.bookingId ||
+        data.bookingId ||
+        data.booking?.bookingId ||
+        data.booking?.id ||
+        getVal('auftragsbestaetigung-booking-id') ||
+        null;
 
-    if (bookingId && !data.bookingId) {
-      data.bookingId = bookingId;
-    }
-
-    if (bookingId && data.booking && !data.booking.bookingId) {
-      data.booking.bookingId = bookingId;
-    }
-
-    setIfExists('auftragsbestaetigung-booking-id', bookingId || '');
-
-    const paymentShadow = await upsertPaymentShadowFromDocument({
-      type: 'auftragsbestaetigung',
-      data,
-      context: { ...context, bookingId }
-    });
-
-    const totals = calculateTotalsFromItems(data.positionen);
-
-    const existingWorkflow = String(existingCommercial?.workflow_status || '').trim().toLowerCase();
-const hasInvoiceAlready = !!existingCommercial?.invoice_number;
-
-const protectedWorkflows = [
-  'rechnung_gestellt',
-  'teilbezahlt',
-  'bezahlt',
-  'abgeschlossen'
-];
-
-const workflowStatusForSave =
-  hasInvoiceAlready || protectedWorkflows.includes(existingWorkflow)
-    ? existingCommercial.workflow_status
-    : 'ab_bestaetigt';
-
-const commercialPayload = {
-  booking_id: bookingId,
-  customer_name: data.kunde ? data.kunde.name : null,
-  customer_email: data.kunde ? data.kunde.email : null,
-  offer_number: referenzAngebot ? String(referenzAngebot).trim() : null,
-  ab_number: abNumber,
-  ab_date: abDatum,
-  ab_amount_gross: totals.totalGross,
-  ab_amount_net: totals.totalNet,
-  ab_tax_amount: totals.totalTax,
-  deposit_amount: anzahlungBrutto,
-  deposit_due: anzahlungFaellig,
-  tax_rate: totals.taxRate,
-  total_amount_19: totals.brutto19,
-  total_amount_7: totals.brutto7,
-  tax_amount_19: totals.steuer19,
-  tax_amount_7: totals.steuer7,
-  workflow_status: workflowStatusForSave,
-  reservation_status: bookingId ? "bestaetigt" : null,
-  notes: `Auftragsbestätigung ${abNumber}${referenzAngebot ? ` | Referenz Angebot ${referenzAngebot}` : ''}`
-};
-    let existingCommercial = null;
-
-    if (bookingId) {
-      const { data: byBooking, error: byBookingError } = await sb
-  .from('commercial_transactions')
-  .select('id, booking_id, ab_number, invoice_number, workflow_status')
-  .eq('booking_id', bookingId)
-  .limit(1);
-
-      if (byBookingError) throw byBookingError;
-      if (byBooking && byBooking.length > 0) {
-        existingCommercial = byBooking[0];
+      if (bookingId && !data.bookingId) {
+        data.bookingId = bookingId;
       }
-    }
 
-    if (!existingCommercial) {
-      const { data: byAbNumber, error: byAbNumberError } = await sb
-  .from('commercial_transactions')
-  .select('id, booking_id, ab_number, invoice_number, workflow_status')
-  .eq('ab_number', abNumber)
-  .limit(1);
-
-      if (byAbNumberError) throw byAbNumberError;
-      if (byAbNumber && byAbNumber.length > 0) {
-        existingCommercial = byAbNumber[0];
+      if (bookingId && data.booking && !data.booking.bookingId) {
+        data.booking.bookingId = bookingId;
       }
+
+      setIfExists('auftragsbestaetigung-booking-id', bookingId || '');
+
+      const paymentShadow = await upsertPaymentShadowFromDocument({
+        type: 'auftragsbestaetigung',
+        data,
+        context: { ...context, bookingId }
+      });
+
+      const totals = calculateTotalsFromItems(data.positionen);
+
+      let existingCommercial = null;
+
+      if (bookingId) {
+        const { data: byBooking, error: byBookingError } = await sb
+          .from('commercial_transactions')
+          .select('id, booking_id, ab_number, invoice_number, workflow_status')
+          .eq('booking_id', bookingId)
+          .limit(1);
+
+        if (byBookingError) throw byBookingError;
+        if (byBooking && byBooking.length > 0) {
+          existingCommercial = byBooking[0];
+        }
+      }
+
+      if (!existingCommercial) {
+        const { data: byAbNumber, error: byAbNumberError } = await sb
+          .from('commercial_transactions')
+          .select('id, booking_id, ab_number, invoice_number, workflow_status')
+          .eq('ab_number', abNumber)
+          .limit(1);
+
+        if (byAbNumberError) throw byAbNumberError;
+        if (byAbNumber && byAbNumber.length > 0) {
+          existingCommercial = byAbNumber[0];
+        }
+      }
+
+      const existingWorkflow = String(existingCommercial?.workflow_status || '').trim().toLowerCase();
+      const hasInvoiceAlready = !!existingCommercial?.invoice_number;
+
+      const protectedWorkflows = [
+        'rechnung_gestellt',
+        'teilbezahlt',
+        'bezahlt',
+        'abgeschlossen'
+      ];
+
+      const workflowStatusForSave =
+        hasInvoiceAlready || protectedWorkflows.includes(existingWorkflow)
+          ? existingCommercial.workflow_status
+          : 'ab_bestaetigt';
+
+      const commercialPayload = {
+        booking_id: bookingId,
+        customer_name: data.kunde ? data.kunde.name : null,
+        customer_email: data.kunde ? data.kunde.email : null,
+        offer_number: referenzAngebot ? String(referenzAngebot).trim() : null,
+        ab_number: abNumber,
+        ab_date: abDatum,
+        ab_amount_gross: totals.totalGross,
+        ab_amount_net: totals.totalNet,
+        ab_tax_amount: totals.totalTax,
+        deposit_amount: anzahlungBrutto,
+        deposit_due: anzahlungFaellig,
+        tax_rate: totals.taxRate,
+        total_amount_19: totals.brutto19,
+        total_amount_7: totals.brutto7,
+        tax_amount_19: totals.steuer19,
+        tax_amount_7: totals.steuer7,
+        workflow_status: workflowStatusForSave,
+        reservation_status: bookingId ? "bestaetigt" : null,
+        notes: `Auftragsbestätigung ${abNumber}${referenzAngebot ? ` | Referenz Angebot ${referenzAngebot}` : ''}`
+      };
+
+      let commercialRecordId = null;
+
+      if (existingCommercial?.id) {
+        commercialRecordId = existingCommercial.id;
+
+        const { error: updateCommercialError } = await sb
+          .from('commercial_transactions')
+          .update(commercialPayload)
+          .eq('id', commercialRecordId);
+
+        if (updateCommercialError) throw updateCommercialError;
+      } else {
+        const { data: insertedCommercial, error: insertCommercialError } = await sb
+          .from('commercial_transactions')
+          .insert(commercialPayload)
+          .select('id')
+          .single();
+
+        if (insertCommercialError) throw insertCommercialError;
+        commercialRecordId = insertedCommercial?.id || null;
+      }
+
+      if (paymentShadow?.id && commercialRecordId) {
+        const { error: linkPaymentError } = await sb
+          .from('payments')
+          .update({ commercial_transaction_id: commercialRecordId })
+          .eq('id', paymentShadow.id);
+
+        if (linkPaymentError) throw linkPaymentError;
+      }
+
+    } catch (err) {
+      console.error("Automatische AB-Übernahme fehlgeschlagen:", err);
+      alert("AB wurde gespeichert, aber die Übernahme in payment/commercial_transactions ist fehlgeschlagen: " + err.message);
     }
-
-    let commercialRecordId = null;
-
-    if (existingCommercial?.id) {
-      commercialRecordId = existingCommercial.id;
-
-      const { error: updateCommercialError } = await sb
-        .from('commercial_transactions')
-        .update(commercialPayload)
-        .eq('id', commercialRecordId);
-
-      if (updateCommercialError) throw updateCommercialError;
-    } else {
-      const { data: insertedCommercial, error: insertCommercialError } = await sb
-        .from('commercial_transactions')
-        .insert(commercialPayload)
-        .select('id')
-        .single();
-
-      if (insertCommercialError) throw insertCommercialError;
-      commercialRecordId = insertedCommercial?.id || null;
-    }
-
-    if (paymentShadow?.id && commercialRecordId) {
-      const { error: linkPaymentError } = await sb
-        .from('payments')
-        .update({ commercial_transaction_id: commercialRecordId })
-        .eq('id', paymentShadow.id);
-
-      if (linkPaymentError) throw linkPaymentError;
-    }
-
-  } catch (err) {
-    console.error("Automatische AB-Übernahme fehlgeschlagen:", err);
-    alert("AB wurde gespeichert, aber die Übernahme in payment/commercial_transactions ist fehlgeschlagen: " + err.message);
   }
- }
 }
 
 async function sendAuftragsbestaetigungMail() {
@@ -5331,6 +5367,7 @@ function fuelleAuftragsbestaetigungAusAngebot(angebot) {
   setIfExists("auftragsbestaetigung-kunde-plz", angebot.kunde.plz || "");
   setIfExists("auftragsbestaetigung-kunde-ort", angebot.kunde.ort || "");
   setIfExists("auftragsbestaetigung-kunde-email", angebot.kunde.email || "");
+  setIfExists("auftragsbestaetigung-kunde-telefon", angebot.kunde.phonel || "");
 
   setIfExists("auftragsbestaetigung-leistung", angebot.leistungsdatum || "");
   setIfExists("auftragsbestaetigung-referenz-angebot", angebot.nummer || "");
@@ -5430,6 +5467,7 @@ async function fuelleRechnungAusAuftragsbestaetigung(ab) {
   setIfExists("rechnung-kunde-plz", ab.kunde?.plz || "");
   setIfExists("rechnung-kunde-ort", ab.kunde?.ort || "");
   setIfExists("rechnung-kunde-email", ab.kunde?.email || "");
+  setIfExists("rechnung-kunde-telefon", ab.kunde?.phone || "");
 
   setIfExists("rechnung-leistung", ab.leistungsdatum || "");
   setIfExists("rechnung-referenz-ab", ab.nummer || "");
