@@ -3207,6 +3207,7 @@ async function ensureOfferReservation({ reason = "save", forceCheckMessage = fal
   const id = bookingId || getOrCreateOfferBookingId();
   const customer = getVal("angebot-kunde-name").trim();
   const customer_email = getVal("angebot-kunde-email").trim();
+  const customer_phone = getVal("angebot-kunde-telefon").trim();
   const ref = getVal("angebot-nummer").trim();
   const baseNote = reason === "manual"
   ? "Reservierung manuell aus Angebot"
