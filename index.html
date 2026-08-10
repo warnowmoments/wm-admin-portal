@@ -3614,13 +3614,215 @@ function buildGutschriftJson() {
   };
 }
 
-function saveGutschriftJsonLocally() {
+async function saveGutschriftJsonLocally() {
   const data = buildGutschriftJson();
+
   if (!String(data.nummer || '').trim()) {
     alert('Bitte eine Gutschriftsnummer eingeben.');
     return;
   }
+
+  const totals = calculateTotalsFromItems(data.positionen);
+  const creditGross = roundMoney(Math.abs(totals.totalGross || 0));
+
+  if (creditGross <= 0) {
+    alert('Die Gutschrift hat keinen gültigen Betrag.');
+    return;
+  }
+
   saveJsonLocally(data, data.nummer + '.json');
+
+  if (typeof sb !== 'undefined' && sb) {
+    try {
+      const gutschriftNumber = String(data.nummer).trim();
+      const result = await saveDocumentToSupabase({
+        type: 'gutschrift',
+        number: gutschriftNumber,
+        customerName: data.kunde ? data.kunde.name : null,
+        content: data,
+        hiddenIdField: 'gutschrift-document-id'
+      });
+      if (result?.ok) {
+        console.log('Gutschrift erfolgreich in Supabase gespeichert oder aktualisiert.');
+      }
+    } catch (e) {
+      console.warn('Dokumentarchiv für Gutschrift fehlgeschlagen:', e);
+    }
+  }
+
+  if (typeof sb !== 'undefined' && sb) {
+    try {
+      const context = await resolveDocumentBookingContext({
+        type: 'gutschrift',
+        data
+      });
+
+      let bookingId =
+        context?.bookingId ||
+        data.bookingId ||
+        data.booking?.bookingId ||
+        data.booking?.id ||
+        getVal('gutschrift-booking-id') ||
+        null;
+
+      if (bookingId && !data.bookingId) data.bookingId = bookingId;
+      if (bookingId) setIfExists('gutschrift-booking-id', bookingId);
+
+      const paymentShadow = await upsertPaymentShadowFromDocument({
+        type: 'gutschrift',
+        data,
+        context: {
+          ...context,
+          bookingId
+        }
+      });
+
+      const referenzRechnung = String(
+        data.referenzRechnung ||
+        data.erstelltAusRechnung ||
+        ''
+      ).trim();
+
+      let invoicePayment = null;
+
+      if (referenzRechnung) {
+        const { data: byInvoice, error: byInvoiceError } = await sb
+          .from('payments')
+          .select('id, booking_id, total_amount, deposit_paid, final_paid, invoice_number, reference_number, commercial_transaction_id')
+          .eq('transaction_type', 'rechnung')
+          .eq('invoice_number', referenzRechnung)
+          .maybeSingle();
+
+        if (byInvoiceError) throw byInvoiceError;
+        if (byInvoice) invoicePayment = byInvoice;
+      }
+
+      if (!invoicePayment && bookingId) {
+        const { data: byBookingRows, error: byBookingError } = await sb
+          .from('payments')
+          .select('id, booking_id, total_amount, deposit_paid, final_paid, invoice_number, reference_number, commercial_transaction_id')
+          .eq('transaction_type', 'rechnung')
+          .eq('booking_id', bookingId)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (byBookingError) throw byBookingError;
+        if (Array.isArray(byBookingRows) && byBookingRows.length) {
+          invoicePayment = byBookingRows[0];
+        }
+      }
+
+      if (!invoicePayment) {
+        throw new Error('Ursprungsrechnung in payments nicht gefunden.');
+      }
+
+      let commercialRow = null;
+
+      if (invoicePayment.commercial_transaction_id) {
+        const { data: byCtId, error: byCtIdError } = await sb
+          .from('commercial_transactions')
+          .select('id, booking_id, invoice_number, invoice_amount_gross, open_amount, workflow_status')
+          .eq('id', invoicePayment.commercial_transaction_id)
+          .maybeSingle();
+
+        if (byCtIdError) throw byCtIdError;
+        if (byCtId) commercialRow = byCtId;
+      }
+
+      if (!commercialRow && bookingId) {
+        const { data: byBookingCt, error: byBookingCtError } = await sb
+          .from('commercial_transactions')
+          .select('id, booking_id, invoice_number, invoice_amount_gross, open_amount, workflow_status')
+          .eq('booking_id', bookingId)
+          .maybeSingle();
+
+        if (byBookingCtError) throw byBookingCtError;
+        if (byBookingCt) commercialRow = byBookingCt;
+      }
+
+      if (!commercialRow && referenzRechnung) {
+        const { data: byInvoiceCt, error: byInvoiceCtError } = await sb
+          .from('commercial_transactions')
+          .select('id, booking_id, invoice_number, invoice_amount_gross, open_amount, workflow_status')
+          .eq('invoice_number', referenzRechnung)
+          .maybeSingle();
+
+        if (byInvoiceCtError) throw byInvoiceCtError;
+        if (byInvoiceCt) commercialRow = byInvoiceCt;
+      }
+
+      if (!commercialRow) {
+        throw new Error('Commercial Transaction zur Ursprungsrechnung nicht gefunden.');
+      }
+
+      const invoiceGross = roundMoney(
+        commercialRow.invoice_amount_gross ?? invoicePayment.total_amount ?? 0
+      );
+
+      const invoicePaid = roundMoney(
+        Number(invoicePayment.deposit_paid || 0) + Number(invoicePayment.final_paid || 0)
+      );
+
+      const newOpenAmount = roundMoney(
+        Math.max(0, invoiceGross - invoicePaid - creditGross)
+      );
+
+      let workflowStatus = 'rechnunggestellt';
+      if (newOpenAmount <= 0) {
+        workflowStatus = 'bezahlt';
+      } else if (invoicePaid > 0 || creditGross > 0) {
+        workflowStatus = 'teilbezahlt';
+      }
+
+     let workflowNote = '';
+
+if (newOpenAmount <= 0) {
+  if (invoicePaid > 0 && creditGross > 0) {
+    workflowNote = `bezahlt durch Zahlung + Gutschrift ${data.nummer}`;
+  } else if (creditGross > 0) {
+    workflowNote = `bezahlt durch Gutschrift ${data.nummer}`;
+  } else {
+    workflowNote = 'bezahlt';
+  }
+} else if (invoicePaid > 0 || creditGross > 0) {
+  workflowNote = `teilbezahlt nach Gutschrift ${data.nummer}`;
+} else {
+  workflowNote = workflowStatus ? String(workflowStatus).trim() : 'rechnunggestellt';
+}
+
+const noteParts = [
+  workflowNote,
+  referenzRechnung ? `zu Rechnung ${referenzRechnung}` : ''
+].filter(Boolean);
+
+      const { error: updateCommercialError } = await sb
+        .from('commercial_transactions')
+        .update({
+          open_amount: newOpenAmount,
+          workflow_status: workflowStatus,
+          notes: noteParts.join(' | ')
+        })
+        .eq('id', commercialRow.id);
+
+      if (updateCommercialError) throw updateCommercialError;
+
+      if (paymentShadow?.id) {
+        const { error: linkPaymentError } = await sb
+          .from('payments')
+          .update({
+            commercial_transaction_id: commercialRow.id
+          })
+          .eq('id', paymentShadow.id);
+
+        if (linkPaymentError) throw linkPaymentError;
+      }
+
+      alert(`Gutschrift gespeichert und verbucht. Neuer offener Betrag: ${newOpenAmount.toFixed(2)} €`);
+    } catch (err) {
+      console.error('Automatische Gutschrift-Übernahme fehlgeschlagen:', err);
+      alert('Gutschrift wurde gespeichert, aber die Verbuchung in payments/commercial_transactions ist fehlgeschlagen: ' + err.message);
+    }
+  }
 }
 
 function loadGutschriftJsonForGutschrift(event) {
@@ -3901,10 +4103,9 @@ async function resolveDocumentBookingContext({ type, data }) {
     return context;
   }
 
-  const mergeUniqueRows = (target, rows) => {
+    const mergeUniqueRows = (target, rows) => {
     for (const row of Array.isArray(rows) ? rows : []) {
       if (!row) continue;
-
       const exists = target.some(existing => {
         if (existing.id && row.id) return existing.id === row.id;
         return (
@@ -3913,7 +4114,6 @@ async function resolveDocumentBookingContext({ type, data }) {
           String(existing.reference_number || '') === String(row.reference_number || '')
         );
       });
-
       if (!exists) target.push(row);
     }
   };
@@ -3928,7 +4128,6 @@ async function resolveDocumentBookingContext({ type, data }) {
 
     if (error) throw error;
     context.currentPaymentRow = rows && rows.length ? rows[0] : null;
-
     if (!context.bookingId && context.currentPaymentRow?.booking_id) {
       context.bookingId = context.currentPaymentRow.booking_id;
     }
@@ -4072,8 +4271,28 @@ async function resolveDocumentBookingContext({ type, data }) {
     return context;
   }
 
+  if (txType === 'gutschrift') {
+    if (!context.bookingId && context.referenzAB) {
+      const { data: invoiceRows, error: invoiceError } = await sb
+        .from('payments')
+        .select('booking_id')
+        .eq('invoice_number', String(context.referenzAB).trim())
+        .eq('transaction_type', 'rechnung')
+        .limit(1);
+
+      if (invoiceError) throw invoiceError;
+      if (invoiceRows && invoiceRows.length && invoiceRows[0]?.booking_id) {
+        context.bookingId = invoiceRows[0].booking_id;
+      }
+    }
+
+    context.preservedDepositPaid = 0;
+    context.preservedFinalPaid = 0;
+    return context;
+  }
+
   return context;
-}
+ }
 
 async function upsertPaymentShadowFromDocument({ type, data, context }) {
   if (typeof sb === 'undefined' || !sb) {
@@ -4233,6 +4452,50 @@ async function upsertPaymentShadowFromDocument({ type, data, context }) {
       preservedFinalPaid
     };
   }
+
+if (txType === 'gutschrift') {
+  const referenzRechnung = String(
+    data?.referenzRechnung ||
+    data?.erstelltAusRechnung ||
+    ''
+  ).trim();
+
+  const grossAbs = roundMoney(Math.abs(totals.totalGross || 0));
+  const netAbs = roundMoney(Math.abs(totals.totalNet || 0));
+  const taxAbs = roundMoney(Math.abs(totals.totalTax || 0));
+  const brutto19Abs = roundMoney(Math.abs(totals.brutto19 || 0));
+  const brutto7Abs = roundMoney(Math.abs(totals.brutto7 || 0));
+  const steuer19Abs = roundMoney(Math.abs(totals.steuer19 || 0));
+  const steuer7Abs = roundMoney(Math.abs(totals.steuer7 || 0));
+
+  payload = {
+    booking_id: bookingId,
+    customer_name: customerName,
+    customer_email: customerEmail,
+    total_amount: grossAbs,
+    deposit_amount: 0,
+    final_amount: grossAbs,
+    deposit_paid: 0,
+    final_paid: 0,
+    deposit_due: null,
+    final_due: data?.faellig || null,
+    status: 'offen',
+    invoice_number: number,
+    transaction_type: 'gutschrift',
+    tax_rate: totals.taxRate,
+    tax_amount: taxAbs,
+    net_amount: netAbs,
+    cash_flow_direction: 'out',
+    note: `Gutschrift ${number}${referenzRechnung ? ' / Referenz Rechnung ' + referenzRechnung : ''}`,
+    expense_category: null,
+    total_amount_19: brutto19Abs,
+    total_amount_7: brutto7Abs,
+    tax_amount_19: steuer19Abs,
+    tax_amount_7: steuer7Abs,
+    source_document_type: 'gutschrift',
+    reference_number: referenzRechnung || null
+  };
+}
 
   if (!payload) {
     throw new Error(`Payment-Shadow für Dokumenttyp "${txType}" noch nicht implementiert.`);
@@ -5872,6 +6135,16 @@ function getDocMeta(type) {
       numberId: null,
       dateId: null,
       leistungId: null
+    };
+  }
+
+  if (type === "gutschrift") {
+    return {
+      title: "GUTSCHRIFT",
+      numberLabel: "Gutschriftsnummer",
+      numberId: "gutschrift-nummer",
+      dateId: "gutschrift-datum",
+      leistungId: "gutschrift-leistung"
     };
   }
 
