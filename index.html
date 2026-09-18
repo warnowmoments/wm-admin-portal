@@ -3616,212 +3616,56 @@ function buildGutschriftJson() {
 
 async function saveGutschriftJsonLocally() {
   const data = buildGutschriftJson();
-
-  if (!String(data.nummer || '').trim()) {
-    alert('Bitte eine Gutschriftsnummer eingeben.');
-    return;
-  }
-
-  const totals = calculateTotalsFromItems(data.positionen);
-  const creditGross = roundMoney(Math.abs(totals.totalGross || 0));
-
-  if (creditGross <= 0) {
-    alert('Die Gutschrift hat keinen gültigen Betrag.');
-    return;
-  }
-
-  saveJsonLocally(data, data.nummer + '.json');
-
-  if (typeof sb !== 'undefined' && sb) {
-    try {
-      const gutschriftNumber = String(data.nummer).trim();
-      const result = await saveDocumentToSupabase({
-        type: 'gutschrift',
-        number: gutschriftNumber,
-        customerName: data.kunde ? data.kunde.name : null,
-        content: data,
-        hiddenIdField: 'gutschrift-document-id'
-      });
-      if (result?.ok) {
-        console.log('Gutschrift erfolgreich in Supabase gespeichert oder aktualisiert.');
+  const number = String(data?.nummer || '').trim();
+  if (!number) return alert('Bitte eine Gutschriftsnummer eingeben.');
+  if (typeof sb === 'undefined' || !sb) return alert('Supabase ist nicht verbunden.');
+  try {
+    const totals = calculateTotalsFromItems(data.positionen);
+    const gross = roundMoney(Math.abs(totals.totalGross || 0));
+    const net = roundMoney(Math.abs(totals.totalNet || 0));
+    const tax = roundMoney(Math.abs(totals.totalTax || 0));
+    if (gross <= 0) return alert('Die Gutschrift benötigt mindestens eine Position mit einem Betrag.');
+    const ref = String(data.referenzRechnung || data.erstelltAusRechnung || getVal('gutschrift-erstellt-aus-rechnung') || '').trim();
+    const candidates = [data.rechnungId, data.rechnungIdIntern, getVal('gutschrift-bezug-rechnung-id-intern'), getVal('gutschrift-bezug-rechnung-id'), data.bookingId, getVal('gutschrift-booking-id')].filter(Boolean).map(String);
+    let parent = null;
+    for (const value of candidates) {
+      if (parent || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) continue;
+      let q = await sb.from('commercial_transactions').select('id, invoice_number, workflow_status').eq('id', value).maybeSingle();
+      if (q.error) throw q.error;
+      parent = q.data || null;
+      if (!parent) {
+        q = await sb.from('commercial_transactions').select('id, invoice_number, workflow_status').eq('booking_id', value).maybeSingle();
+        if (q.error) throw q.error;
+        parent = q.data || null;
       }
-    } catch (e) {
-      console.warn('Dokumentarchiv für Gutschrift fehlgeschlagen:', e);
     }
-  }
-
-  if (typeof sb !== 'undefined' && sb) {
-    try {
-      const context = await resolveDocumentBookingContext({
-        type: 'gutschrift',
-        data
-      });
-
-      let bookingId =
-        context?.bookingId ||
-        data.bookingId ||
-        data.booking?.bookingId ||
-        data.booking?.id ||
-        getVal('gutschrift-booking-id') ||
-        null;
-
-      if (bookingId && !data.bookingId) data.bookingId = bookingId;
-      if (bookingId) setIfExists('gutschrift-booking-id', bookingId);
-
-      const paymentShadow = await upsertPaymentShadowFromDocument({
-        type: 'gutschrift',
-        data,
-        context: {
-          ...context,
-          bookingId
-        }
-      });
-
-      const referenzRechnung = String(
-        data.referenzRechnung ||
-        data.erstelltAusRechnung ||
-        ''
-      ).trim();
-
-      let invoicePayment = null;
-
-      if (referenzRechnung) {
-        const { data: byInvoice, error: byInvoiceError } = await sb
-          .from('payments')
-          .select('id, booking_id, total_amount, deposit_paid, final_paid, invoice_number, reference_number, commercial_transaction_id')
-          .eq('transaction_type', 'rechnung')
-          .eq('invoice_number', referenzRechnung)
-          .maybeSingle();
-
-        if (byInvoiceError) throw byInvoiceError;
-        if (byInvoice) invoicePayment = byInvoice;
-      }
-
-      if (!invoicePayment && bookingId) {
-        const { data: byBookingRows, error: byBookingError } = await sb
-          .from('payments')
-          .select('id, booking_id, total_amount, deposit_paid, final_paid, invoice_number, reference_number, commercial_transaction_id')
-          .eq('transaction_type', 'rechnung')
-          .eq('booking_id', bookingId)
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        if (byBookingError) throw byBookingError;
-        if (Array.isArray(byBookingRows) && byBookingRows.length) {
-          invoicePayment = byBookingRows[0];
-        }
-      }
-
-      if (!invoicePayment) {
-        throw new Error('Ursprungsrechnung in payments nicht gefunden.');
-      }
-
-      let commercialRow = null;
-
-      if (invoicePayment.commercial_transaction_id) {
-        const { data: byCtId, error: byCtIdError } = await sb
-          .from('commercial_transactions')
-          .select('id, booking_id, invoice_number, invoice_amount_gross, open_amount, workflow_status')
-          .eq('id', invoicePayment.commercial_transaction_id)
-          .maybeSingle();
-
-        if (byCtIdError) throw byCtIdError;
-        if (byCtId) commercialRow = byCtId;
-      }
-
-      if (!commercialRow && bookingId) {
-        const { data: byBookingCt, error: byBookingCtError } = await sb
-          .from('commercial_transactions')
-          .select('id, booking_id, invoice_number, invoice_amount_gross, open_amount, workflow_status')
-          .eq('booking_id', bookingId)
-          .maybeSingle();
-
-        if (byBookingCtError) throw byBookingCtError;
-        if (byBookingCt) commercialRow = byBookingCt;
-      }
-
-      if (!commercialRow && referenzRechnung) {
-        const { data: byInvoiceCt, error: byInvoiceCtError } = await sb
-          .from('commercial_transactions')
-          .select('id, booking_id, invoice_number, invoice_amount_gross, open_amount, workflow_status')
-          .eq('invoice_number', referenzRechnung)
-          .maybeSingle();
-
-        if (byInvoiceCtError) throw byInvoiceCtError;
-        if (byInvoiceCt) commercialRow = byInvoiceCt;
-      }
-
-      if (!commercialRow) {
-        throw new Error('Commercial Transaction zur Ursprungsrechnung nicht gefunden.');
-      }
-
-      const invoiceGross = roundMoney(
-        commercialRow.invoice_amount_gross ?? invoicePayment.total_amount ?? 0
-      );
-
-      const invoicePaid = roundMoney(
-        Number(invoicePayment.deposit_paid || 0) + Number(invoicePayment.final_paid || 0)
-      );
-
-      const newOpenAmount = roundMoney(
-        Math.max(0, invoiceGross - invoicePaid - creditGross)
-      );
-
-      let workflowStatus = 'rechnunggestellt';
-      if (newOpenAmount <= 0) {
-        workflowStatus = 'bezahlt';
-      } else if (invoicePaid > 0 || creditGross > 0) {
-        workflowStatus = 'teilbezahlt';
-      }
-
-     let workflowNote = '';
-
-if (newOpenAmount <= 0) {
-  if (invoicePaid > 0 && creditGross > 0) {
-    workflowNote = `bezahlt durch Zahlung + Gutschrift ${data.nummer}`;
-  } else if (creditGross > 0) {
-    workflowNote = `bezahlt durch Gutschrift ${data.nummer}`;
-  } else {
-    workflowNote = 'bezahlt';
-  }
-} else if (invoicePaid > 0 || creditGross > 0) {
-  workflowNote = `teilbezahlt nach Gutschrift ${data.nummer}`;
-} else {
-  workflowNote = workflowStatus ? String(workflowStatus).trim() : 'rechnunggestellt';
-}
-
-const noteParts = [
-  workflowNote,
-  referenzRechnung ? `zu Rechnung ${referenzRechnung}` : ''
-].filter(Boolean);
-
-      const { error: updateCommercialError } = await sb
-        .from('commercial_transactions')
-        .update({
-          open_amount: newOpenAmount,
-          workflow_status: workflowStatus,
-          notes: noteParts.join(' | ')
-        })
-        .eq('id', commercialRow.id);
-
-      if (updateCommercialError) throw updateCommercialError;
-
-      if (paymentShadow?.id) {
-        const { error: linkPaymentError } = await sb
-          .from('payments')
-          .update({
-            commercial_transaction_id: commercialRow.id
-          })
-          .eq('id', paymentShadow.id);
-
-        if (linkPaymentError) throw linkPaymentError;
-      }
-
-      alert(`Gutschrift gespeichert und verbucht. Neuer offener Betrag: ${newOpenAmount.toFixed(2)} €`);
-    } catch (err) {
-      console.error('Automatische Gutschrift-Übernahme fehlgeschlagen:', err);
-      alert('Gutschrift wurde gespeichert, aber die Verbuchung in payments/commercial_transactions ist fehlgeschlagen: ' + err.message);
+    if (!parent && ref) {
+      const q = await sb.from('commercial_transactions').select('id, invoice_number, workflow_status').eq('invoice_number', ref).maybeSingle();
+      if (q.error) throw q.error;
+      parent = q.data || null;
     }
+    if (!parent?.id) return alert('Die Ursprungsrechnung wurde nicht als zentrale Finanzhauptakte gefunden. Bitte die Rechnung zuerst im Admin Tool speichern.');
+    if (['storniert', 'neutralisiert'].includes(String(parent.workflow_status || '').toLowerCase())) return alert('Für einen stornierten oder neutralisierten Ursprungsbeleg kann keine reguläre Gutschrift erstellt werden.');
+    const reason = String(data.grund || getVal('gutschrift-grund') || data.notizen || '').trim();
+    if (!reason) return alert('Bitte einen Gutschriftgrund angeben.');
+    if (!confirm(`Gutschrift ${number} über ${gross.toFixed(2)} € verbindlich anlegen?\n\nUrsprungsrechnung: ${parent.invoice_number || parent.id}\nDie Auszahlung wird im Zahlungstool als offener Bankausgang erscheinen.`)) return;
+    const payload = {
+      p_parent_transaction_id: parent.id, p_credit_note_number: number,
+      p_credit_note_date: data.datum || new Date().toISOString().slice(0, 10),
+      p_amount_gross: gross, p_amount_net: net, p_tax_amount: tax,
+      p_tax_rate: totals.taxRate == null ? 0 : Number(totals.taxRate),
+      p_reason: reason, p_payout_required: true, p_due_date: data.faellig || null,
+      p_guv_relevant: true, p_source_ref: number,
+      p_document_content: { ...data, typ: 'gutschrift', referenzRechnung: parent.invoice_number || ref, rechnungId: parent.id, erstelltAusRechnung: parent.invoice_number || ref }
+    };
+    const { data: result, error } = await sb.rpc('finance_create_credit_note_with_document', payload);
+    if (error) throw error;
+    saveJsonLocally(payload.p_document_content, `${number}.json`);
+    setIfExists('gutschrift-document-id', result?.document_id || '');
+    alert(`Gutschrift ${number} wurde zentral gespeichert.\n\nFinanzakte: ${result?.commercial_transaction_id || '-'}\nPayment: ${result?.payment_id || '-'}\nDokument: ${result?.document_id || '-'}`);
+  } catch (err) {
+    console.error('Gutschrift speichern fehlgeschlagen:', err);
+    alert('Gutschrift konnte nicht zentral gespeichert werden: ' + (err?.message || err));
   }
 }
 
@@ -4529,6 +4373,9 @@ if (txType === 'gutschrift') {
 }
 
 async function saveAngebotJsonLocally() {
+  // B1.8.4: Angebote sind keine Folgerechnungen.
+  let followupMode = null;
+  let followupRoot = null;
   bookingLoadAll();
 
   try {
@@ -4733,6 +4580,33 @@ async function saveAngebotJsonLocally() {
       if (linkPaymentError) throw linkPaymentError;
     }
 
+    if (followupMode && commercialRecordId) {
+      const { error: followupPaymentError } = await sb.from('payments').update({
+        deposit_amount: 0,
+        deposit_paid: 0,
+        final_amount: totals.totalGross,
+        final_paid: 0,
+        open_amount: totals.totalGross,
+        status: 'offen',
+        reference_number: followupRoot?.ab_number || null,
+        updated_at: new Date().toISOString()
+      }).eq('commercial_transaction_id', commercialRecordId).eq('invoice_number', invoiceNumber);
+      if (followupPaymentError) throw followupPaymentError;
+
+      const correctedDocument = {
+        ...data,
+        invoiceMode: followupMode,
+        referenzAuftragsbestaetigung: followupRoot?.ab_number || null,
+        referenzAngebot: followupRoot?.offer_number || null,
+        parentInvoiceNumber: followupRoot?.invoice_number || null,
+        relationReason: followupRoot ? (followupMode === 'supplemental_invoice' ? 'Zusatzrechnung' : 'Ersatzrechnung') : null
+      };
+      const { error: documentFixError } = await sb.from('wm_documents').update({ content: correctedDocument }).eq('type', 'rechnung').eq('number', invoiceNumber);
+      if (documentFixError) throw documentFixError;
+
+      alert(`${followupMode === 'supplemental_invoice' ? 'Zusatzrechnung' : 'Ersatzrechnung'} ${invoiceNumber} wurde erstellt.\n\nBezug Hauptrechnung: ${followupRoot?.invoice_number || '-'}\nBezug AB: ${followupRoot?.ab_number || '-'}\nAnzahlung: 0,00 €\nOffener Betrag: ${Number(totals.totalGross || 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}`);
+    }
+
   } catch (err) {
     console.error("Automatische Angebots-Übernahme fehlgeschlagen:", err);
     alert("Angebot wurde gespeichert, aber die Übernahme in payment/commercial_transactions ist fehlgeschlagen: " + err.message);
@@ -4911,6 +4785,7 @@ async function saveAuftragsbestaetigungJsonLocally() {
         ab_tax_amount: totals.totalTax,
         deposit_amount: anzahlungBrutto,
         deposit_due: anzahlungFaellig,
+        ...(hasInvoiceAlready ? {} : { open_amount: anzahlungBrutto }),
         tax_rate: totals.taxRate,
         total_amount_19: totals.brutto19,
         total_amount_7: totals.brutto7,
@@ -5146,66 +5021,66 @@ async function saveRechnungJsonLocally() {
       tax_amount_19: totals.steuer19,
       tax_amount_7: totals.steuer7,
       workflow_status: workflowStatus,
+      document_role: "primary",
       reservation_status: "bestaetigt",
       notes: `Rechnung ${invoiceNumber}${referenzAB ? ` | Referenz AB ${referenzAB}` : ''}${referenzAngebot ? ` | Referenz Angebot ${referenzAngebot}` : ''}`
     };
 
-    let existingCommercial = null;
-    let existingCommercialError = null;
-
+    let relatedRows = [];
     if (bookingId) {
-      const { data: byBooking, error } = await sb
-        .from('commercial_transactions')
-        .select('id')
-        .eq('booking_id', bookingId)
-        .maybeSingle();
-
-      existingCommercial = byBooking;
-      existingCommercialError = error;
+      const { data, error } = await sb.from('commercial_transactions')
+        .select('id, invoice_number, document_role, workflow_status, ab_number, offer_number, booking_id')
+        .eq('booking_id', bookingId).order('created_at', { ascending: true });
+      if (error) throw error;
+      relatedRows = Array.isArray(data) ? data : [];
     }
-
-    if (!existingCommercial && !existingCommercialError && invoiceNumber) {
-      const { data: byInvoice, error } = await sb
-        .from('commercial_transactions')
-        .select('id')
-        .eq('invoice_number', invoiceNumber)
-        .maybeSingle();
-
-      existingCommercial = byInvoice;
-      existingCommercialError = error;
+    if (!relatedRows.length && referenzAB) {
+      const { data, error } = await sb.from('commercial_transactions')
+        .select('id, invoice_number, document_role, workflow_status, ab_number, offer_number, booking_id')
+        .eq('ab_number', String(referenzAB).trim()).order('created_at', { ascending: true });
+      if (error) throw error;
+      relatedRows = Array.isArray(data) ? data : [];
     }
-
-    if (!existingCommercial && !existingCommercialError && referenzAB) {
-      const { data: byAb, error } = await sb
-        .from('commercial_transactions')
-        .select('id')
-        .eq('ab_number', String(referenzAB).trim())
-        .maybeSingle();
-
-      existingCommercial = byAb;
-      existingCommercialError = error;
-    }
-
-    if (existingCommercialError) throw existingCommercialError;
-
+    let existingCommercial = relatedRows.find(row => String(row.invoice_number || '').trim() === invoiceNumber) || null;
+    const rootCommercial = relatedRows.find(row => String(row.document_role || '').trim() === 'primary') || relatedRows.find(row => !String(row.invoice_number || '').trim()) || relatedRows[0] || null;
     let commercialRecordId = null;
+    let followupMode = null;
+    let followupRoot = null;
 
     if (existingCommercial?.id) {
       commercialRecordId = existingCommercial.id;
-
-      const { error: updateCommercialError } = await sb
-        .from('commercial_transactions')
-        .update(commercialPayload)
-        .eq('id', commercialRecordId);
-
+      const { error: updateCommercialError } = await sb.from('commercial_transactions').update(commercialPayload).eq('id', commercialRecordId);
+      if (updateCommercialError) throw updateCommercialError;
+    } else if (rootCommercial?.id && String(rootCommercial.invoice_number || '').trim()) {
+      const choice = String(prompt(`Zu ${rootCommercial.ab_number || referenzAB || 'diesem Vorgang'} existiert bereits die Rechnung ${rootCommercial.invoice_number}.\n\nZ = Zusatzrechnung erstellen\nE = Ersatzrechnung nach Storno erstellen\nAbbrechen = leer lassen`) || '').trim().toUpperCase();
+      if (!['Z', 'E'].includes(choice)) return alert('Neue Rechnung nicht gespeichert. Bestehende Rechnungen werden niemals still überschrieben.');
+      const relationReason = String(prompt(choice === 'Z' ? 'Grund der Zusatzrechnung eingeben, z. B. Verlängerungsstunde:' : 'Grund der Ersatzrechnung eingeben:') || '').trim();
+      if (!relationReason) return alert('Bitte einen Grund für die Rechnungsfolge angeben.');
+      followupMode = choice === 'Z' ? 'supplemental_invoice' : 'replacement_invoice';
+      followupRoot = rootCommercial;
+      const followupPayload = {
+        ...commercialPayload,
+        parent_transaction_id: rootCommercial.id,
+        document_role: followupMode,
+        related_invoice_number: rootCommercial.invoice_number,
+        relation_reason: relationReason,
+        offer_number: rootCommercial.offer_number || referenzAngebot || null,
+        ab_number: rootCommercial.ab_number || referenzAB || null,
+        deposit_amount: 0,
+        deposit_due: null,
+        open_amount: totals.totalGross,
+        source_ref: rootCommercial.invoice_number,
+        notes: `${followupMode === 'supplemental_invoice' ? 'Zusatzrechnung' : 'Ersatzrechnung'} ${invoiceNumber} | Bezug ${rootCommercial.invoice_number} | ${relationReason}`
+      };
+      const { data: insertedCommercial, error: insertCommercialError } = await sb.from('commercial_transactions').insert(followupPayload).select('id').single();
+      if (insertCommercialError) throw insertCommercialError;
+      commercialRecordId = insertedCommercial?.id || null;
+    } else if (rootCommercial?.id) {
+      commercialRecordId = rootCommercial.id;
+      const { error: updateCommercialError } = await sb.from('commercial_transactions').update(commercialPayload).eq('id', commercialRecordId);
       if (updateCommercialError) throw updateCommercialError;
     } else {
-      const { data: insertedCommercial, error: insertCommercialError } = await sb
-        .from('commercial_transactions')
-        .insert(commercialPayload)
-        .select('id')
-        .single();
-
+      const { data: insertedCommercial, error: insertCommercialError } = await sb.from('commercial_transactions').insert(commercialPayload).select('id').single();
       if (insertCommercialError) throw insertCommercialError;
       commercialRecordId = insertedCommercial?.id || null;
     }
@@ -5249,142 +5124,46 @@ async function stornoNumberExists(stornoNumber) {
 
 async function stornoRechnung() {
   const original = buildRechnungJson();
-  const invoiceNumber = String(original.nummer || getVal('rechnung-nummer') || '').trim();
-
-  if (!invoiceNumber) {
-    alert('Bitte zuerst die Rechnung laden oder eine Rechnungsnummer eintragen.');
-    return;
-  }
-
-  const reason = prompt('Bitte Stornogrund eingeben:');
-  if (reason === null) return;
-
-  const stornoReason = String(reason).trim();
-  if (!stornoReason) {
-    alert('Bitte einen Stornogrund angeben.');
-    return;
-  }
-
-  const confirmText =
-    `Storno-Rechnung für ${invoiceNumber} wirklich erstellen?\n\n` +
-    `Die Originalrechnung bleibt unverändert. Es wird ein neuer Storno-Beleg erzeugt.`;
-  if (!confirm(confirmText)) return;
-
-  const today = new Date().toISOString().split('T')[0];
-  const stornoNumber = buildStornoNumber(invoiceNumber);
-
-  const negate = (value) => {
-    const n = Number(value);
-    return Number.isFinite(n) ? -Math.abs(n) : 0;
-  };
-
-  const stornoPositions = Array.isArray(original.positionen)
-    ? original.positionen.map((pos) => ({
-        ...pos,
-        menge: pos.menge != null ? pos.menge : 1,
-        einzelpreis: negate(pos.einzelpreis ?? pos.einzelpreisBrutto ?? 0),
-        einzelpreisBrutto: negate(pos.einzelpreisBrutto ?? pos.einzelpreis ?? 0),
-        gesamtpreis: negate(pos.gesamtpreis ?? 0)
-      }))
-    : [];
-
-  const stornoData = {
-    typ: 'storno_rechnung',
-    nummer: stornoNumber,
-    datum: today,
-    originalRechnung: original.nummer,
-    originalRechnungsdatum: original.datum || null,
-    stornoGrund: stornoReason,
-    stornoDatum: today,
-    bookingId: original.bookingId || null,
-    kunde: original.kunde || {},
-    leistungsdatum: original.leistungsdatum || null,
-    faellig: today,
-    referenzAuftragsbestaetigung: original.referenzAuftragsbestaetigung || null,
-    referenzAngebot: original.referenzAngebot || null,
-    positionen: stornoPositions,
-    anzahlung: {
-      betragBrutto: negate(original.anzahlung?.betragBrutto || 0),
-      mwst: original.anzahlung?.mwst || 0,
-      faellig: original.anzahlung?.faellig || null,
-      inTabelle: original.anzahlung?.inTabelle || 'ja'
-    },
-    notizen: `Storno zu Rechnung ${original.nummer}. Grund: ${stornoReason}`
-  };
-
+  const invoiceNumber = String(original?.nummer || getVal('rechnung-nummer') || '').trim();
+  if (!invoiceNumber) return alert('Bitte zuerst die Rechnung laden oder eine Rechnungsnummer eintragen.');
+  if (typeof sb === 'undefined' || !sb) return alert('Supabase ist nicht verbunden.');
   try {
-    if (typeof sb !== 'undefined' && sb) {
-      const exists = await stornoNumberExists(stornoNumber);
-      const payload = {
-        type: 'storno_rechnung',
-        number: stornoNumber,
-        customer_name: stornoData.kunde?.name || null,
-        content: stornoData
-      };
-
-      if (exists) {
-        const { data: existingDoc, error: findError } = await sb
-          .from('wm_documents')
-          .select('id')
-          .eq('type', 'storno_rechnung')
-          .eq('number', stornoNumber)
-          .maybeSingle();
-
-        if (findError) throw findError;
-        if (!existingDoc || !existingDoc.id) {
-          throw new Error('Storno-Beleg existiert bereits, konnte aber nicht eindeutig gefunden werden.');
-        }
-
-        const { error: updateError } = await sb
-          .from('wm_documents')
-          .update(payload)
-          .eq('id', existingDoc.id);
-
-        if (updateError) throw updateError;
-      } else {
-        const { error: insertError } = await sb
-          .from('wm_documents')
-          .insert(payload);
-
-        if (insertError) throw insertError;
-      }
-    }
-
-        if (typeof sb !== 'undefined' && sb && invoiceNumber) {
-  let ctQuery = sb
-    .from('commercial_transactions')
-    .update({
-      storno_number: stornoNumber,
-      storno_date: today,
-      storno_reason: stornoReason,
-      original_invoice_number: invoiceNumber,
-      workflow_status: 'storniert',
-      status_reason: stornoReason,
-      archived_at: new Date().toISOString()
-    })
-    .eq('invoice_number', invoiceNumber);
-
-  if (original.bookingId) {
-    ctQuery = ctQuery.eq('booking_id', original.bookingId);
-  }
-
-  const { error: ctUpdateError } = await ctQuery;
-  if (ctUpdateError) throw ctUpdateError;
-}
-
+    const { data: parent, error: parentError } = await sb.from('commercial_transactions').select('id, invoice_number, workflow_status').eq('invoice_number', invoiceNumber).maybeSingle();
+    if (parentError) throw parentError;
+    if (!parent?.id) return alert(`Zur Rechnung ${invoiceNumber} wurde keine zentrale Finanzhauptakte gefunden. Bitte die Rechnung zuerst speichern.`);
+    if (String(parent.workflow_status || '').toLowerCase() === 'storniert') return alert(`Die Rechnung ${invoiceNumber} ist bereits storniert.`);
+    const stornoReason = String(prompt('Bitte Stornogrund eingeben:') || '').trim();
+    if (!stornoReason) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const stornoNumber = buildStornoNumber(invoiceNumber);
+    const negative = value => Number.isFinite(Number(value)) ? -Math.abs(Number(value)) : 0;
+    const stornoData = {
+      typ: 'storno_rechnung', nummer: stornoNumber, datum: today,
+      originalRechnung: invoiceNumber, originalRechnungsdatum: original.datum || null,
+      stornoGrund: stornoReason, stornoDatum: today, bookingId: original.bookingId || null,
+      kunde: original.kunde || {}, leistungsdatum: original.leistungsdatum || null, faellig: today,
+      referenzAuftragsbestaetigung: original.referenzAuftragsbestaetigung || null,
+      referenzAngebot: original.referenzAngebot || null,
+      positionen: Array.isArray(original.positionen) ? original.positionen.map(pos => ({ ...pos, menge: pos.menge ?? 1, einzelpreis: negative(pos.einzelpreis ?? pos.einzelpreisBrutto), einzelpreisBrutto: negative(pos.einzelpreisBrutto ?? pos.einzelpreis), gesamtpreis: negative(pos.gesamtpreis ?? ((Number(pos.menge ?? 1) || 1) * Number(pos.einzelpreisBrutto ?? pos.einzelpreis ?? 0))) })) : [],
+      anzahlung: { betragBrutto: negative(original.anzahlung?.betragBrutto), mwst: original.anzahlung?.mwst || 0, faellig: original.anzahlung?.faellig || null, inTabelle: original.anzahlung?.inTabelle || 'ja' },
+      notizen: `Storno zu Rechnung ${invoiceNumber}. Grund: ${stornoReason}`
+    };
+    if (!confirm(`Stornorechnung ${stornoNumber} für ${invoiceNumber} verbindlich erstellen?\n\nDie Originalrechnung wird zentral storniert. Bereits eingegangene Zahlungen bleiben erhalten; eine Rückerstattung wird anschließend separat angelegt.`)) return;
+    const { data: result, error } = await sb.rpc('finance_cancel_document', {
+      p_commercial_transaction_id: parent.id, p_storno_number: stornoNumber,
+      p_storno_date: today, p_storno_reason: stornoReason,
+      p_document_content: stornoData, p_create_refund: false,
+      p_refund_reference: null, p_refund_amount: null, p_refund_date: null,
+      p_refund_guv_relevant: false
+    });
+    if (error) throw error;
     saveJsonLocally(stornoData, `${stornoNumber}.json`);
-generatePreview("storno_rechnung");
-
-const preview = document.getElementById("storno_rechnung-preview");
-if (preview) {
-  preview.classList.add("active");
-  preview.scrollIntoView({ behavior: "smooth" });
-}
-
-alert(`Storno-Rechnung ${stornoNumber} wurde erstellt.`);
+    generatePreview('storno_rechnung');
+    document.getElementById('storno_rechnung-preview')?.classList.add('active');
+    alert(`Stornorechnung ${stornoNumber} wurde zentral angelegt.\n\nStornodokument: ${result?.storno_document_id || '-'}\nMarkierte Payments: ${result?.payments_marked_storniert ?? 0}`);
   } catch (err) {
-    console.error('stornoRechnung Fehler:', err);
-    alert('Storno-Rechnung konnte nicht erstellt werden: ' + err.message);
+    console.error('Storno fehlgeschlagen:', err);
+    alert('Stornorechnung konnte nicht zentral gespeichert werden: ' + (err?.message || err));
   }
 }
 
@@ -6168,9 +5947,11 @@ async function generatePreview(type) {
   data.typ = "storno_rechnung";
   data.nummer = buildStornoNumber(data.nummer || getVal("rechnung-nummer") || "");
   data.datum = data.datum || new Date().toISOString().split('T')[0];
-  data.originalRechnung = data.originalRechnung || getVal("rechnung-referenz-ab") || "";
+  data.originalRechnung = data.originalRechnung || getVal("rechnung-nummer") || "";
   data.originalRechnungsdatum = data.originalRechnungsdatum || getVal("rechnung-datum") || "";
   data.stornoGrund = data.stornoGrund || getVal("rechnung-storno-grund") || "Storno";
+  const toNegative = value => Number.isFinite(Number(value)) ? -Math.abs(Number(value)) : 0;
+  data.positionen = Array.isArray(data.positionen) ? data.positionen.map(pos => ({ ...pos, einzelpreis: toNegative(pos.einzelpreis ?? pos.einzelpreisBrutto), einzelpreisBrutto: toNegative(pos.einzelpreisBrutto ?? pos.einzelpreis), gesamtpreis: pos.gesamtpreis == null ? pos.gesamtpreis : toNegative(pos.gesamtpreis) })) : [];
 }
 
   if (type === "angebot" && BOOKING.REQUIRE_FOR_OFFER) {
@@ -6211,6 +5992,7 @@ const docDatum = isStorno
   : getVal(docMeta.dateId);
 
   let additionalInfo = "";
+  if (isStorno) { additionalInfo += `<p><strong>Storno zu Rechnung:</strong> ${escapeHtml(data.originalRechnung || "-")}</p>`; additionalInfo += `<p><strong>Stornogrund:</strong> ${escapeHtml(data.stornoGrund || "-")}</p>`; }
   const leistungVal = docMeta.leistungId ? getVal(docMeta.leistungId) : "";
   if (leistungVal) additionalInfo += `<p><strong>Leistungsdatum:</strong> ${formatDate(leistungVal)}</p>`;
 
@@ -7841,6 +7623,166 @@ if (data && data.success) {
 }
 
 
+</script>
+
+<!-- B1.8: Folgerechnung vor Zahlungsanlage klassifizieren -->
+<script>
+(function () {
+  const __wmB18UpsertPayment = upsertPaymentShadowFromDocument;
+  upsertPaymentShadowFromDocument = async function ({ type, data, context }) {
+    if (type === 'rechnung' && data && data.__wm_followup_invoice === true) {
+      context = {
+        ...context,
+        agreedDepositAmount: 0,
+        actualDepositPaid: 0,
+        preservedDepositPaid: 0,
+        preservedFinalPaid: 0
+      };
+    }
+    return __wmB18UpsertPayment({ type, data, context });
+  };
+
+  saveRechnungJsonLocally = async function () {
+    try {
+      await ensureInvoiceNumber();
+      const data = buildRechnungJson();
+      const invoiceNumber = String(data?.nummer || '').trim();
+      if (!invoiceNumber) return alert('Bitte eine Rechnungsnummer eingeben.');
+      if (typeof sb === 'undefined' || !sb) return alert('Supabase ist nicht verbunden.');
+
+      let context = await resolveDocumentBookingContext({ type: 'rechnung', data });
+      let bookingId = context?.bookingId || data.bookingId || data.booking?.bookingId || data.booking?.id || getVal('rechnung-booking-id') || null;
+      if (bookingId) {
+        data.bookingId = bookingId;
+        if (data.booking) data.booking.bookingId = bookingId;
+        setIfExists('rechnung-booking-id', bookingId);
+      }
+
+      let relatedRows = [];
+      if (bookingId) {
+        const { data: rows, error } = await sb.from('commercial_transactions')
+          .select('id, invoice_number, document_role, workflow_status, ab_number, offer_number, booking_id')
+          .eq('booking_id', bookingId).order('created_at', { ascending: true });
+        if (error) throw error;
+        relatedRows = Array.isArray(rows) ? rows : [];
+      }
+      const enteredAb = String(data.referenzAuftragsbestaetigung || '').trim();
+      if (!relatedRows.length && enteredAb) {
+        const { data: rows, error } = await sb.from('commercial_transactions')
+          .select('id, invoice_number, document_role, workflow_status, ab_number, offer_number, booking_id')
+          .eq('ab_number', enteredAb).order('created_at', { ascending: true });
+        if (error) throw error;
+        relatedRows = Array.isArray(rows) ? rows : [];
+      }
+
+      const existing = relatedRows.find(row => String(row.invoice_number || '').trim() === invoiceNumber) || null;
+      const root = relatedRows.find(row => String(row.document_role || '').trim() === 'primary') || relatedRows.find(row => String(row.invoice_number || '').trim()) || null;
+      let followupMode = null;
+      let relationReason = null;
+
+      if (!existing && root?.id && String(root.invoice_number || '').trim()) {
+        const choice = String(prompt(`Zu ${root.ab_number || enteredAb || 'diesem Vorgang'} existiert bereits die Rechnung ${root.invoice_number}.\n\nZ = Zusatzrechnung erstellen\nE = Ersatzrechnung nach Storno erstellen\nAbbrechen = leer lassen`) || '').trim().toUpperCase();
+        if (!['Z', 'E'].includes(choice)) return alert('Neue Rechnung nicht gespeichert. Bestehende Rechnungen werden niemals still überschrieben.');
+        relationReason = String(prompt(choice === 'Z' ? 'Grund der Zusatzrechnung eingeben:' : 'Grund der Ersatzrechnung eingeben:') || '').trim();
+        if (!relationReason) return alert('Bitte einen Grund für die Rechnungsfolge angeben.');
+        followupMode = choice === 'Z' ? 'supplemental_invoice' : 'replacement_invoice';
+        data.__wm_followup_invoice = true;
+        data.invoiceMode = followupMode;
+        data.parentInvoiceNumber = root.invoice_number;
+        data.relationReason = relationReason;
+        data.referenzAuftragsbestaetigung = root.ab_number || enteredAb || null;
+        data.referenzAngebot = root.offer_number || data.referenzAngebot || null;
+        context = { ...context, bookingId, agreedDepositAmount: 0, actualDepositPaid: 0, preservedDepositPaid: 0, preservedFinalPaid: 0 };
+      }
+
+      const documentResult = await saveDocumentToSupabase({
+        type: 'rechnung', number: invoiceNumber, customerName: data.kunde?.name || null,
+        content: data, hiddenIdField: 'rechnung-document-id'
+      });
+      if (!documentResult.ok) return;
+
+      const paymentShadow = await upsertPaymentShadowFromDocument({ type: 'rechnung', data, context: { ...context, bookingId } });
+      const totals = calculateTotalsFromItems(data.positionen);
+      const paid = followupMode ? 0 : roundMoney(Number(paymentShadow?.actualDepositPaid || 0) + Number(paymentShadow?.preservedFinalPaid || 0));
+      const workflowStatus = paid >= totals.totalGross && totals.totalGross > 0 ? 'bezahlt' : paid > 0 ? 'teilbezahlt' : 'rechnung_gestellt';
+      const payload = {
+        booking_id: bookingId,
+        customer_name: data.kunde?.name || null,
+        customer_email: data.kunde?.email || null,
+        offer_number: data.referenzAngebot ? String(data.referenzAngebot).trim() : null,
+        ab_number: data.referenzAuftragsbestaetigung ? String(data.referenzAuftragsbestaetigung).trim() : null,
+        invoice_number: invoiceNumber,
+        invoice_date: data.datum || new Date().toISOString().slice(0, 10),
+        invoice_due: data.faellig || null,
+        invoice_amount_gross: totals.totalGross,
+        invoice_amount_net: totals.totalNet,
+        invoice_tax_amount: totals.totalTax,
+        deposit_amount: followupMode ? 0 : roundMoney(paymentShadow?.agreedDepositAmount || 0),
+        deposit_due: null,
+        open_amount: followupMode ? totals.totalGross : roundMoney(paymentShadow?.openAmountActual || 0),
+        tax_rate: totals.taxRate,
+        total_amount_19: totals.brutto19,
+        total_amount_7: totals.brutto7,
+        tax_amount_19: totals.steuer19,
+        tax_amount_7: totals.steuer7,
+        workflow_status: workflowStatus,
+        reservation_status: 'bestaetigt',
+        document_role: followupMode || 'primary',
+        notes: followupMode ? `${followupMode === 'supplemental_invoice' ? 'Zusatzrechnung' : 'Ersatzrechnung'} ${invoiceNumber} | Bezug ${root.invoice_number} | ${relationReason}` : `Rechnung ${invoiceNumber}`
+      };
+      if (followupMode) Object.assign(payload, { parent_transaction_id: root.id, related_invoice_number: root.invoice_number, relation_reason: relationReason, source_ref: root.invoice_number });
+
+      let commercialId = existing?.id || ((!followupMode && root?.id && !String(root.invoice_number || '').trim()) ? root.id : null);
+      if (commercialId) {
+        const { error } = await sb.from('commercial_transactions').update(payload).eq('id', commercialId);
+        if (error) throw error;
+      } else {
+        const { data: inserted, error } = await sb.from('commercial_transactions').insert(payload).select('id').single();
+        if (error) throw error;
+        commercialId = inserted.id;
+      }
+      if (paymentShadow?.id && commercialId) {
+        const { error } = await sb.from('payments').update({ commercial_transaction_id: commercialId }).eq('id', paymentShadow.id);
+        if (error) throw error;
+      }
+      saveJsonLocally(data, `${invoiceNumber}.json`);
+      alert(followupMode ? `${followupMode === 'supplemental_invoice' ? 'Zusatzrechnung' : 'Ersatzrechnung'} ${invoiceNumber} wurde erstellt.\n\nBezug Hauptrechnung: ${root.invoice_number}\nBezug AB: ${data.referenzAuftragsbestaetigung}\nAnzahlung: 0,00 €\nOffener Betrag: ${Number(totals.totalGross).toLocaleString('de-DE', {style:'currency',currency:'EUR'})}` : `Rechnung ${invoiceNumber} wurde gespeichert.`);
+    } catch (err) {
+      console.error('Rechnung speichern B1.8 fehlgeschlagen', err);
+      alert(`Rechnung konnte nicht vollständig gespeichert werden:\n${err?.message || err}`);
+    }
+  };
+})();
+</script>
+
+<!-- B1.8.4: Rechnungsformular liest die gematchte Anzahlung aus dem freigegebenen Payment-Schatten -->
+<script>
+(function () {
+  const __wmB184FillInvoiceFromAB = fuelleRechnungAusAuftragsbestaetigung;
+  fuelleRechnungAusAuftragsbestaetigung = async function (ab) {
+    await __wmB184FillInvoiceFromAB(ab);
+    try {
+      if (!ab?.nummer || typeof sb === 'undefined' || !sb) return;
+      const abNumber = String(ab.nummer).trim();
+      const agreed = Math.max(0, Number(ab?.anzahlung?.betragBrutto || 0));
+      const { data: ct, error: ctError } = await sb.from('commercial_transactions').select('id').eq('ab_number', abNumber).maybeSingle();
+      if (ctError) throw ctError;
+      if (!ct?.id) return;
+      const { data: payment, error: paymentError } = await sb.from('payments')
+        .select('deposit_paid').eq('commercial_transaction_id', ct.id)
+        .eq('transaction_type', 'auftragsbestaetigung').eq('invoice_number', abNumber).maybeSingle();
+      if (paymentError) throw paymentError;
+      const paid = Math.max(0, Number(payment?.deposit_paid || 0));
+      const actualPaid = Math.min(agreed || paid, paid);
+      setIfExists('rechnung-anzahlung-betrag', actualPaid.toFixed(2));
+      setIfExists('rechnung-anzahlung-betrag-19', actualPaid.toFixed(2));
+      setIfExists('rechnung-anzahlung-betrag-7', '0.00');
+      setIfExists('rechnung-anzahlung-mwst', '19');
+      setIfExists('rechnung-anzahlung-faellig', ab?.anzahlung?.faellig || '');
+      setIfExists('rechnung-anzahlung-in-tabelle', actualPaid > 0 ? 'ja' : 'nein');
+    } catch (err) { console.warn('B1.8.4: Gematchte Anzahlung konnte nicht aus payments geladen werden.', err); }
+  };
+})();
 </script>
 </body>
 </html>
