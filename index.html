@@ -293,6 +293,29 @@ window.WMV2={fallback:true,serialize:()=>({}),block:()=>false,imported:(type,dat
 .print-footer p { margin: 0; }
 .print-footer p + p { margin-top: 1mm; }
 
+
+/* Belegvorlage (Angebot, AB, Rechnung, Gutschrift): Kopf, Anschrift, Belegdaten, Summen */
+.preview { font-family: 'Montserrat','Segoe UI',Tahoma,Geneva,Verdana,sans-serif; color: #1f2937; }
+.preview-header { align-items: center !important; gap: 28px; padding-bottom: 16px; border-bottom: 2px solid #1D334A; margin-bottom: 30px !important; }
+.preview-logo { width: 210px; max-width: 210px !important; height: auto; flex: 0 0 auto; }
+.preview-company { font-size: .86em; line-height: 1.55; color: #334155; }
+.preview-company strong { color: #1D334A; font-size: 1.08em; }
+.doc-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 340px); gap: 40px; align-items: start; }
+.doc-sender { display: table; white-space: nowrap; font-size: .68em; color: #64748b; border-bottom: 1px solid #cbd5e1; padding-bottom: 2px; margin-bottom: 10px; }
+.doc-address { line-height: 1.5; }
+.doc-meta { border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 14px; font-size: .92em; }
+.doc-meta p { display: flex; justify-content: space-between; gap: 12px; margin: 2px 0; }
+.doc-meta p strong { font-weight: 600; color: #475569; }
+.preview-title { font-size: 1.9em !important; letter-spacing: .08em; color: #1D334A !important; margin: 36px 0 22px !important; }
+.preview-title::after { content: ""; display: block; width: 56px; border-top: 3px solid #D98A3D; margin-top: 10px; }
+.preview-table th { background: transparent !important; color: #1D334A !important; border-bottom: 2px solid #1D334A !important; font-weight: 700; }
+.preview-table td { border-bottom: 1px solid #e2e8f0; }
+.doc-totals { margin: 14px 0 28px auto; width: min(360px, 60%); }
+.doc-totals-row { display: flex; justify-content: space-between; gap: 16px; padding: 3px 0; }
+.doc-totals-sum { border-top: 2px solid #1D334A; margin-top: 6px; padding-top: 8px; font-weight: 700; font-size: 1.2em; color: #1D334A; }
+.preview-section h3 { color: #1D334A; font-size: 1.02em; }
+@media (max-width: 700px) { .doc-head { grid-template-columns: 1fr; gap: 16px; } .preview-header { flex-wrap: wrap; } }
+
 @media print {
   @page {
     size: A4;
@@ -369,15 +392,20 @@ window.WMV2={fallback:true,serialize:()=>({}),block:()=>false,imported:(type,dat
   .preview-table { page-break-inside: auto !important; break-inside: auto !important; }
   .preview-table tr { page-break-inside: avoid !important; break-inside: avoid !important; }
 
-  /* Kompakter Druck: eine normale Rechnung passt mit Fußzeile auf eine Seite */
-  .preview-header { margin-bottom: 18px !important; }
-  .preview-title { margin: 14px 0 !important; }
-  .preview-section { margin-bottom: 14px !important; }
-  .preview-section h3 { margin-bottom: 6px !important; }
-  .preview-table { margin: 12px 0 !important; }
-  .preview-table th { padding: 8px 10px !important; }
-  .preview-table td { padding: 6px 10px !important; }
-  .preview-total { margin-top: 10px !important; }
+  /* Druck: ruhige Abstände, Grundschrift 10 pt */
+  .preview { font-size: 10pt !important; }
+  .preview-header { margin-bottom: 7mm !important; padding-bottom: 4mm !important; }
+  .preview-logo { width: 52mm !important; max-width: 52mm !important; }
+  .doc-head { margin-top: 2mm !important; grid-template-columns: minmax(0, 1fr) 80mm !important; gap: 7mm !important; }
+  .doc-meta { font-size: .86em !important; padding: 2.5mm 3.5mm !important; }
+  .doc-sender { font-size: 6.4pt !important; }
+  .preview-title { margin: 8mm 0 5mm !important; }
+  .preview-section { margin-bottom: 5mm !important; }
+  .preview-section h3 { margin-bottom: 1.5mm !important; }
+  .preview-table { margin: 0 0 3mm !important; }
+  .preview-table th { padding: 2mm 2.5mm !important; }
+  .preview-table td { padding: 2mm 2.5mm !important; }
+  .doc-totals { margin-bottom: 5mm !important; }
   .print-body-inner { padding-bottom: 0 !important; }
   .print-footer { margin-top: 4mm !important; }
  }
@@ -6119,6 +6147,8 @@ const docDatum = isStorno
   }
 
     let tableRows = "";
+  const rateNet = {}, rateTax = {};
+  const addRate = (r, n, t) => { const k = String(Number(r) || 0); rateNet[k] = (rateNet[k] || 0) + n; rateTax[k] = (rateTax[k] || 0) + t; };
   let rowsGross19 = 0;
   let rowsGross7 = 0;
   let subtotal = 0;
@@ -6159,6 +6189,7 @@ const docDatum = isStorno
 
     subtotal += lineNet;
     totalTax += lineTax;
+    addRate(tax, lineNet, lineTax);
 
     tableRows += `
       <tr>
@@ -6210,6 +6241,7 @@ if (type === "rechnung") {
 
     anzahlungDeductNet += nettoNeg19;
     anzahlungDeductTax += taxNeg19;
+    addRate(19, nettoNeg19, taxNeg19);
 
     rowIndex++;
     rows.push(`
@@ -6231,6 +6263,7 @@ if (type === "rechnung") {
 
     anzahlungDeductNet += nettoNeg7;
     anzahlungDeductTax += taxNeg7;
+    addRate(7, nettoNeg7, taxNeg7);
 
     rowIndex++;
     rows.push(`
@@ -6252,6 +6285,7 @@ if (type === "rechnung") {
       const nettoNeg = bruttoNeg / (1 + vr.rate / 100);
       anzahlungDeductNet += nettoNeg;
       anzahlungDeductTax += bruttoNeg - nettoNeg;
+      addRate(vr.rate, nettoNeg, bruttoNeg - nettoNeg);
       rowIndex++;
       rows.push(`
       <tr style="background:#eef6ff;">
@@ -6272,6 +6306,13 @@ if (type === "rechnung") {
   subtotal += anzahlungDeductNet;
   totalTax += anzahlungDeductTax;
   const total = subtotal + totalTax;
+
+  // Summenblock: Nettobetrag und Umsatzsteuer je Steuersatz, dann Gesamtbetrag
+  const satzListe = Object.keys(rateNet).filter(k => Math.abs(rateNet[k]) > 0.004 || Math.abs(rateTax[k]) > 0.004).sort((a, b) => Number(b) - Number(a));
+  const mehrereSaetze = satzListe.length > 1;
+  const summenZeilen = satzListe.map(k => `
+                <div class="doc-totals-row"><span>Nettobetrag${mehrereSaetze ? ` ${k} %` : ""}</span><span>${moneySpan(rateNet[k])}</span></div>
+                ${Number(k) > 0 ? `<div class="doc-totals-row"><span>zzgl. ${k} % USt</span><span>${moneySpan(rateTax[k])}</span></div>` : ""}`).join("");
 
   const notizen = getVal(`${type}-notizen`);
 
@@ -6307,7 +6348,6 @@ if (type === "rechnung") {
         <p><strong>Gesamtbetrag (Leistung):</strong> ${moneySpan(leistungGesamt)}</p>
         <p style="margin-bottom:12px;"><strong>Restbetrag (nach Anzahlung${gutscheinGeplant > 0 ? " und Gutschein" : ""}):</strong> ${moneySpan(restbetrag)}</p>
         <p>Verwendungszweck: Bitte die Auftragsbestätigungsnummer angeben.</p>
-        <p>Bankverbindung:</p>
         ${bankBlockHtml()}
       </div>
     `;
@@ -6335,17 +6375,20 @@ if (type === "rechnung") {
       <tr>
         <td class="print-body">
           <div class="print-body-inner">   <!-- ← NEU: inneres div -->
-            <div class="preview-section">
-              <strong>${escapeHtml(kundeName)}</strong><br>
-              ${escapeHtml(kundeAdresse)}<br>
-              ${escapeHtml(kundePlz)} ${escapeHtml(kundeOrt)}
+            <div class="doc-head">
+              <div class="doc-address">
+                <div class="doc-sender">CJ Warnow Moments UG (haftungsbeschränkt) · ${escapeHtml(COMPANY.address1)} · ${escapeHtml(COMPANY.zipCity)}</div>
+                <strong>${escapeHtml(kundeName)}</strong><br>
+                ${escapeHtml(kundeAdresse)}<br>
+                ${escapeHtml(kundePlz)} ${escapeHtml(kundeOrt)}
+              </div>
+              <div class="doc-meta">
+                <p><strong>${docMeta.numberLabel}:</strong> ${escapeHtml(docNummer)}</p>
+                <p><strong>Datum:</strong> ${formatDate(docDatum)}</p>
+                ${additionalInfo}
+              </div>
             </div>
             <h2 class="preview-title">${docMeta.title}</h2>
-            <div class="preview-section">
-              <p><strong>${docMeta.numberLabel}:</strong> ${escapeHtml(docNummer)}</p>
-              <p><strong>Datum:</strong> ${formatDate(docDatum)}</p>
-              ${additionalInfo}
-            </div>
             <table class="preview-table">
               <thead>
                 <tr>
@@ -6362,10 +6405,9 @@ if (type === "rechnung") {
                 ${anzahlungRow}
               </tbody>
             </table>
-            <div style="text-align:right; margin-top:20px;">
-              <p><strong>Zwischensumme:</strong> ${moneySpan(subtotal)}</p>
-              <p><strong>MwSt.:</strong> ${moneySpan(totalTax)}</p>
-              <p class="preview-total">Gesamtbetrag: ${moneySpan(total, true)}</p>
+            <div class="doc-totals">
+              ${summenZeilen || `<div class="doc-totals-row"><span>Nettobetrag</span><span>${moneySpan(subtotal)}</span></div>`}
+              <div class="doc-totals-row doc-totals-sum preview-total"><span>Gesamtbetrag</span><span>${moneySpan(total, true)}</span></div>
             </div>
             ${notizen ? `<div class="preview-section"><h3>Anmerkungen</h3><p style="white-space: pre-line;">${escapeHtml(notizen)}</p></div>` : ""}
             ${anzahlungInfo}
