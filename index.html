@@ -8623,6 +8623,264 @@ renderReport();
 Array.prototype.forEach.call(document.querySelectorAll('.tab'),function(t){if(t.textContent==='Gutscheine')t.addEventListener('click',function(){if(!ctl.vouchers.length&&!busy)$('load').onclick();});});
 })();
 </script>
+<!-- Gutscheinbestellungen von der Website (Skript 62): Liste, Zahlungshinweis, Rechnung/Gutschein vorbereiten -->
+<script id="wm-voucher-orders">
+(function(){
+ 'use strict';
+ var orders = [], withdrawals = [], loaded = false, busy = false;
+ var STATUS = {
+  awaiting_payment: ['Zahlung offen', '#b45309', '#fffbeb'],
+  paid: ['Bezahlt – Gutschein ausstellen', '#1d4ed8', '#eff6ff'],
+  issued: ['Ausgestellt', '#15803d', '#f0fdf4'],
+  cancelled: ['Storniert', '#6b7280', '#f3f4f6'],
+  withdrawn: ['Widerrufen', '#6b7280', '#f3f4f6']
+ };
+ function el(id){ return document.getElementById(id); }
+ function esc(x){ return String(x == null ? '' : x).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+ function eur(n){ return Number(n || 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }); }
+ function de(d){ var m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? m[3] + '.' + m[2] + '.' + m[1] : ''; }
+ function today(){ return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' }); }
+ function msg(t, bad){ var m = el('wm-vo-msg'); if (m){ m.textContent = t || ''; m.style.color = bad ? '#b91c1c' : '#334155'; } }
+ async function client(){
+  var c = await ensureSupabaseReady(), s = await c.auth.getSession();
+  if (s.error || !s.data || !s.data.session) throw Error('Bitte zuerst im AdminTool anmelden.');
+  return c;
+ }
+ async function rpc(name, args){
+  var c = await client(), r = await c.rpc(name, args || {});
+  if (r.error) throw Error(r.error.message || String(r.error));
+  return r.data;
+ }
+
+ async function load(){
+  if (busy) return;
+  busy = true; msg('Lade Bestellungen …');
+  try {
+   var data = await rpc('wm_voucher_orders_overview', { p_include_closed: !!(el('wm-vo-all') && el('wm-vo-all').checked) });
+   orders = Array.isArray(data) ? data : [];
+   try { var wd = await rpc('wm_voucher_withdrawals_list', { p_open_only: !(el('wm-vo-all') && el('wm-vo-all').checked) }); withdrawals = Array.isArray(wd) ? wd : []; }
+   catch(e) { withdrawals = []; if (/function|wm_voucher_withdrawals_list/i.test(e.message)) msg('Hinweis: Skript 63 (Widerrufe) ist noch nicht ausgeführt.', true); }
+   loaded = true;
+   render();
+   renderWithdrawals();
+   var open = orders.filter(function(o){ return o.status === 'awaiting_payment'; }).length;
+   var paid = orders.filter(function(o){ return o.status === 'paid'; }).length;
+   var found = orders.filter(function(o){ return o.status === 'awaiting_payment' && o.payment_hint; }).length;
+   var openWd = withdrawals.filter(function(w){ return w.status === 'open'; }).length;
+   msg((openWd ? openWd + ' offene(r) Widerruf(e) · ' : '') + (orders.length ? (open + ' offen, davon ' + found + ' mit passendem Zahlungseingang · ' + paid + ' bezahlt, Gutschein noch ausstellen') : 'Keine offenen Bestellungen.'));
+  } catch(e) {
+   msg('Bestellungen konnten nicht geladen werden: ' + e.message + (/function|wm_voucher/i.test(e.message) ? ' (Skript 62 ausgeführt?)' : ''), true);
+  } finally { busy = false; }
+ }
+
+ function render(){
+  var body = el('wm-vo-body'); if (!body) return;
+  if (!orders.length){ body.innerHTML = '<tr><td colspan="5" style="color:#64748b">Keine Bestellungen in dieser Ansicht.</td></tr>'; return; }
+  body.innerHTML = orders.map(function(o, i){
+   var st = STATUS[o.status] || [o.status, '#334155', '#fff'];
+   var overdue = o.status === 'awaiting_payment' && o.payment_due_on < today();
+   var hint = o.payment_hint
+     ? '<div style="margin-top:6px;padding:6px 8px;border-radius:6px;background:' + (o.payment_hint.quality === 'sicher' ? '#dcfce7' : '#fef9c3') + '">Zahlungseingang ' + esc(o.payment_hint.quality) + ': ' + esc(de(o.payment_hint.booked_on)) + ' · ' + esc(eur(o.payment_hint.amount)) + '<br><span style="color:#475569">' + esc(o.payment_hint.counterparty_name || '') + ' · „' + esc(o.payment_hint.reference || '') + '“</span></div>'
+     : (o.status === 'awaiting_payment' ? '<div style="margin-top:6px;color:' + (overdue ? '#b91c1c' : '#64748b') + '">Noch kein passender Zahlungseingang' + (overdue ? ' – Zahlungsziel überschritten' : '') + '</div>' : '');
+   var actions = [];
+   if (o.status === 'awaiting_payment') actions.push(['paid', 'Zahlung eingegangen'], ['cancelled', 'Stornieren']);
+   if (o.status === 'paid') actions.push(['invoice', '1. Rechnung vorbereiten'], ['voucher', '2. Gutschein vorbereiten'], ['issued', '3. Als ausgestellt markieren'], ['withdrawn', 'Widerruf']);
+   if (o.status === 'issued') actions.push(['withdrawn', 'Widerruf']);
+   if (o.status === 'cancelled') actions.push(['awaiting_payment', 'Wieder öffnen']);
+   return '<tr>' +
+    '<td><b>' + esc(o.order_number) + '</b><br><span style="color:#64748b">' + esc(de(String(o.created_at).slice(0, 10))) + '</span></td>' +
+    '<td><b>' + esc(o.kind === 'tour' ? 'Tourgutschein ' + o.product_label : o.product_label) + '</b><br>' + esc(eur(o.amount)) +
+      (o.recipient_name ? '<br>Für: ' + esc(o.recipient_name) : '') +
+      (o.greeting ? '<br><span style="color:#475569;white-space:pre-wrap">„' + esc(o.greeting) + '“</span>' : '') + '</td>' +
+    '<td>' + esc(o.buyer_name) + '<br>' + esc(o.buyer_street) + '<br>' + esc(o.buyer_zip + ' ' + o.buyer_city) +
+      '<br><a href="mailto:' + esc(o.buyer_email) + '">' + esc(o.buyer_email) + '</a>' + (o.buyer_phone ? '<br>' + esc(o.buyer_phone) : '') + '</td>' +
+    '<td><span style="display:inline-block;padding:3px 9px;border-radius:999px;font-weight:700;color:' + st[1] + ';background:' + st[2] + '">' + esc(st[0]) + '</span>' +
+      (o.status === 'awaiting_payment' ? '<br><span style="color:#64748b">Zahlungsziel ' + esc(de(o.payment_due_on)) + '</span>' : '') +
+      (o.voucher_number ? '<br>Gutschein ' + esc(o.voucher_number) : '') +
+      (o.invoice_number ? '<br>Rechnung ' + esc(o.invoice_number) : '') + hint +
+      (o.withdrawal ? '<div style="margin-top:6px;padding:6px 8px;border-radius:6px;background:#fee2e2;color:#991b1b;font-weight:700">Widerruf eingegangen ' + esc(o.withdrawal.received_at_text) + (o.withdrawal.status === 'done' ? ' (erledigt)' : '') + '</div>' : '') + '</td>' +
+    '<td>' + actions.map(function(a){ return '<button type="button" data-i="' + i + '" data-a="' + a[0] + '" style="display:block;width:100%;margin:0 0 6px">' + esc(a[1]) + '</button>'; }).join('') + '</td>' +
+   '</tr>';
+  }).join('');
+ }
+
+ async function setStatus(o, status, voucherNumber, invoiceNumber, note){
+  await rpc('wm_voucher_order_set_status', { p_id: o.id, p_status: status, p_voucher_number: voucherNumber || null, p_invoice_number: invoiceNumber || null, p_note: note || null });
+  await load();
+ }
+
+ function prepareInvoice(o){
+  if (typeof fillFormFromJson !== 'function') { alert('Rechnungsformular nicht gefunden.'); return; }
+  var desc = o.kind === 'tour'
+    ? 'Geschenkgutschein (Tourgutschein): ' + o.product_label + ' – Einzweckgutschein für eine Floßtour mit Eventfloß-Miete'
+    : 'Geschenkgutschein (Wertgutschein) über ' + eur(o.amount) + ' – Einzweckgutschein für Floßtouren mit Eventfloß-Miete';
+  var paidOn = o.payment_hint && o.payment_hint.booked_on ? de(o.payment_hint.booked_on) : (o.paid_at ? de(String(o.paid_at).slice(0, 10)) : '');
+  fillFormFromJson('rechnung', {
+   nummer: '',
+   datum: today(),
+   leistungsdatum: today(),
+   kunde: { name: o.buyer_name, adresse: o.buyer_street, plz: o.buyer_zip, ort: o.buyer_city, email: o.buyer_email },
+   notizen: 'Gutscheinbestellung ' + o.order_number + ' über die Website. Der Betrag wurde ' + (paidOn ? 'am ' + paidOn + ' ' : '') + 'per Überweisung bezahlt.',
+   positionen: [{ beschreibung: desc, menge: 1, einzelpreisBrutto: Number(o.amount), mwst: 19 }]
+  });
+  var tab = Array.prototype.find.call(document.querySelectorAll('.tab'), function(t){ return /Rechnung erstellen/.test(t.textContent); });
+  if (typeof switchTab === 'function') switchTab(tab || null, 'rechnung-panel');
+  var nr = el('rechnung-nummer'); if (nr){ nr.scrollIntoView({ behavior: 'smooth', block: 'center' }); nr.focus(); }
+  alert('Rechnung für ' + o.order_number + ' ist vorbereitet.\n\nBitte noch:\n1. die nächste Rechnungsnummer eintragen\n2. Vorschau prüfen und speichern\n3. danach im Zahlungstool die Zahlung dieser Rechnung zuordnen');
+ }
+
+ function setVal(id, v, evt){ var x = el(id); if (!x) return; x.value = v; if (evt) x.dispatchEvent(new Event(evt, { bubbles: true })); }
+ function prepareVoucher(o){
+  var fields = el('vs-fields');
+  if (!fields) { alert('Gutscheinverkauf nicht gefunden.'); return; }
+  if (fields.disabled && el('vs-new')) el('vs-new').click();
+  if (fields.disabled) { alert('Das Gutscheinformular ist noch gesperrt. Bitte im Gutscheinverkauf zuerst „Neuer Gutscheinauftrag“ wählen.'); return; }
+  setVal('vs-kind', o.kind === 'tour' ? 'tour' : 'value', 'change');
+  if (o.kind === 'tour') {
+   var sel = el('vs-product'), ok = sel && Array.prototype.some.call(sel.options, function(op){ return op.value === o.tour_label; });
+   if (!ok) { alert('Die Tour „' + (o.tour_label || o.product_label) + '“ fehlt in der Auswahl des Gutscheinverkaufs. Bitte von Hand auswählen.'); }
+   else setVal('vs-product', o.tour_label, 'change');
+  } else {
+   setVal('vs-amount', Number(o.amount).toFixed(2).replace('.', ','), 'input');
+  }
+  setVal('vs-buyer', o.buyer_name); setVal('vs-email', o.buyer_email); setVal('vs-channel', 'website');
+  setVal('vs-recipient', o.recipient_name || ''); setVal('vs-greeting', o.greeting || '');
+  setVal('vs-until', (Number(today().slice(0, 4)) + 3) + '-12-31');
+  setVal('vs-note', 'Website-Bestellung ' + o.order_number);
+  setVal('vs-search', o.invoice_number || o.buyer_name, 'input');
+  if (el('vs-form')) el('vs-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (el('vs-load')) el('vs-load').click();
+  alert('Gutscheindaten für ' + o.order_number + ' sind eingetragen.\n\nBitte noch:\n1. unten den bezahlten Vorgang (die Rechnung) und den Ursprungsbeleg auswählen\n2. Gutschein verbindlich ausstellen und als PDF speichern\n3. PDF und Rechnung an ' + o.buyer_email + ' schicken\n4. hier „3. Als ausgestellt markieren“');
+ }
+
+ async function suggestVoucherNumber(o){
+  try {
+   var list = await rpc('wm_v1_voucher_list');
+   var v = (list || []).find(function(x){ return String(x.reason || '').indexOf(o.order_number) >= 0; });
+   return v ? v.voucher_number : '';
+  } catch(e) { return ''; }
+ }
+
+ async function act(o, a){
+  try {
+   if (a === 'invoice') return prepareInvoice(o);
+   if (a === 'voucher') return prepareVoucher(o);
+   if (a === 'paid') {
+    var h = o.payment_hint ? '\n\nGefundener Zahlungseingang: ' + de(o.payment_hint.booked_on) + ', ' + eur(o.payment_hint.amount) + ', ' + (o.payment_hint.counterparty_name || '') : '\n\nEs wurde noch kein passender Zahlungseingang gefunden. Bitte im Konto prüfen.';
+    if (!confirm('Ist die Zahlung für ' + o.order_number + ' (' + eur(o.amount) + ') eingegangen?' + h)) return;
+    return await setStatus(o, 'paid');
+   }
+   if (a === 'issued') {
+    var sug = await suggestVoucherNumber(o);
+    var nr = prompt('Gutscheinnummer des ausgestellten Gutscheins für ' + o.order_number + ':', sug);
+    if (nr === null) return;
+    var inv = prompt('Rechnungsnummer (optional):', o.invoice_number || '');
+    if (inv === null) return;
+    return await setStatus(o, 'issued', nr.trim(), inv.trim());
+   }
+   if (a === 'cancelled') {
+    var why = prompt('Bestellung ' + o.order_number + ' stornieren? Grund (z. B. „keine Zahlung“):', 'Keine Zahlung eingegangen');
+    if (why === null) return;
+    return await setStatus(o, 'cancelled', null, null, why);
+   }
+   if (a === 'withdrawn') {
+    var w = prompt('Widerruf für ' + o.order_number + ' erfassen. Bitte bereits gezahltes Geld zurücküberweisen und einen ausgestellten Gutschein im Gutscheinbestand widerrufen.\n\nNotiz:', 'Widerruf des Kunden vom ' + de(today()));
+    if (w === null) return;
+    return await setStatus(o, 'withdrawn', null, null, w);
+   }
+   if (a === 'awaiting_payment') {
+    if (!confirm('Bestellung ' + o.order_number + ' wieder auf „Zahlung offen“ setzen?')) return;
+    return await setStatus(o, 'awaiting_payment');
+   }
+  } catch(e) { alert('Nicht möglich: ' + e.message); }
+ }
+
+ var ORDER_STATUS = { awaiting_payment: 'Zahlung offen', paid: 'bezahlt', issued: 'Gutschein ausgestellt', cancelled: 'storniert', withdrawn: 'widerrufen' };
+ function renderWithdrawals(){
+  var box = el('wm-wd-box'), body = el('wm-wd-body'); if (!box || !body) return;
+  box.hidden = !withdrawals.length;
+  body.innerHTML = withdrawals.map(function(w, i){
+   var o = w.order, acts = [];
+   if (w.status === 'open' && o && ['awaiting_payment', 'paid', 'issued'].indexOf(o.status) >= 0) acts.push(['order', 'Bestellung auf „Widerrufen“ setzen']);
+   if (w.status === 'open') acts.push(['done', 'Als erledigt markieren']);
+   return '<tr>' +
+    '<td><b>' + esc(w.received_at_text) + '</b>' + (w.status === 'done' ? '<br><span style="color:#15803d">erledigt</span>' + (w.done_note ? '<br><span style="color:#475569">' + esc(w.done_note) + '</span>' : '') : '<br><span style="color:#b91c1c;font-weight:700">offen</span>') + '</td>' +
+    '<td>' + esc(w.name) + '<br><a href="mailto:' + esc(w.email) + '">' + esc(w.email) + '</a><br><span style="color:#64748b">Bestellnr. angegeben: ' + esc(w.order_number_input || '–') + '</span></td>' +
+    '<td>' + (o ? '<b>' + esc(o.order_number) + '</b> · ' + esc(o.product_label) + ' · ' + esc(eur(o.amount)) + '<br>Status: ' + esc(ORDER_STATUS[o.status] || o.status) + (o.paid_at ? ' (bezahlt ' + esc(de(String(o.paid_at).slice(0, 10))) + ')' : '') + (o.voucher_number ? '<br>Gutschein ' + esc(o.voucher_number) : '') : '<i>keine Bestellung zugeordnet</i>') +
+      '<br><span style="color:#64748b">' + esc(w.match_note) + '</span></td>' +
+    '<td>' + (w.confirmation_sent === true ? 'Eingangsbestätigung verschickt' : (w.confirmation_sent === false ? '<b style="color:#b91c1c">Eingangsbestätigung NICHT zugestellt</b>' : '–')) + '</td>' +
+    '<td>' + acts.map(function(a){ return '<button type="button" data-w="' + i + '" data-wa="' + a[0] + '" style="display:block;width:100%;margin:0 0 6px">' + esc(a[1]) + '</button>'; }).join('') + '</td>' +
+   '</tr>';
+  }).join('');
+ }
+ async function actWithdrawal(w, a){
+  try {
+   if (a === 'order') {
+    var o = w.order;
+    var hint = o.status === 'awaiting_payment' ? 'Es wurde noch nicht bezahlt, eine Erstattung ist nicht nötig.'
+      : (o.status === 'issued' ? 'Bitte den Betrag (' + eur(o.amount) + ') zurücküberweisen und den Gutschein ' + (o.voucher_number || '') + ' im Gutscheinbestand widerrufen.'
+      : 'Bitte den Betrag (' + eur(o.amount) + ') zurücküberweisen.');
+    var note = prompt('Bestellung ' + o.order_number + ' auf „Widerrufen“ setzen?\n\n' + hint + '\n\nNotiz:', 'Widerruf über Widerrufsbutton vom ' + w.received_at_text);
+    if (note === null) return;
+    await rpc('wm_voucher_order_set_status', { p_id: o.id, p_status: 'withdrawn', p_voucher_number: null, p_invoice_number: null, p_note: note });
+    if (confirm('Widerruf jetzt auch als erledigt markieren?')) {
+     var dn = prompt('Notiz zum Widerruf (z. B. „Erstattet am …“ oder „nicht bezahlt“):', o.status === 'awaiting_payment' ? 'Nicht bezahlt, keine Erstattung nötig' : 'Erstattet am ');
+     if (dn !== null) await rpc('wm_voucher_withdrawal_done', { p_id: w.id, p_note: dn, p_order_id: null });
+    }
+    return await load();
+   }
+   if (a === 'done') {
+    var n = prompt('Widerruf von ' + w.name + ' als erledigt markieren. Notiz (z. B. „Erstattet am …“, „verspätet, Kunde informiert“):', '');
+    if (n === null) return;
+    await rpc('wm_voucher_withdrawal_done', { p_id: w.id, p_note: n, p_order_id: null });
+    return await load();
+   }
+  } catch(e) { alert('Nicht möglich: ' + e.message); }
+ }
+
+ function mount(){
+  var host = el('gutscheinverkauf-panel');
+  if (!host || el('wm-vo-panel')) return !!host;
+  var sec = document.createElement('section');
+  sec.id = 'wm-vo-panel';
+  sec.style.cssText = 'margin:0 0 28px;padding:18px;border:1px solid #cbd5da;border-radius:10px;background:#fff';
+  sec.innerHTML =
+   '<h3 style="margin:0 0 6px">Website-Bestellungen</h3>' +
+   '<p style="margin:0 0 12px;color:#475569;line-height:1.5">Bestellungen von der Gutscheinseite, bezahlt per Überweisung mit der Bestellnummer als Verwendungszweck. ' +
+   'Ablauf: Zahlung abwarten → <b>Zahlung eingegangen</b> → <b>1. Rechnung vorbereiten</b>, Nummer eintragen, speichern und im Zahlungstool die Zahlung zuordnen → ' +
+   '<b>2. Gutschein vorbereiten</b>, Rechnung als bezahlten Vorgang wählen und ausstellen → PDF und Rechnung an den Kunden → <b>3. Als ausgestellt markieren</b>.</p>' +
+   '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:10px">' +
+   '<button type="button" id="wm-vo-load">Bestellungen laden</button>' +
+   '<label style="display:flex;gap:6px;align-items:center;margin:0;font-weight:500"><input type="checkbox" id="wm-vo-all" style="width:auto;display:inline;margin:0"> auch erledigte und stornierte zeigen</label>' +
+   '<span id="wm-vo-msg" style="color:#334155"></span></div>' +
+   '<div id="wm-wd-box" hidden style="margin:0 0 18px;padding:14px;border:2px solid #fca5a5;border-radius:10px;background:#fff7f7">' +
+   '<h4 style="margin:0 0 6px;color:#991b1b">Widerrufe über den Widerrufsbutton</h4>' +
+   '<p style="margin:0 0 10px;color:#475569;line-height:1.5">Fristgerecht ist ein Widerruf innerhalb von 14 Tagen nach der Bestellung. Bereits gezahlte Beträge spätestens 14 Tage nach Eingang des Widerrufs zurücküberweisen, einen ausgestellten Gutschein im Gutscheinbestand widerrufen.</p>' +
+   '<div style="overflow-x:auto"><table class="vs-table" style="min-width:860px"><thead><tr><th>Eingang</th><th>Kunde / Angaben</th><th>Zugeordnete Bestellung</th><th>Eingangsbestätigung</th><th style="width:210px">Aktion</th></tr></thead><tbody id="wm-wd-body"></tbody></table></div></div>' +
+   '<div style="overflow-x:auto"><table class="vs-table" style="min-width:860px"><thead><tr><th>Bestellung</th><th>Gutschein</th><th>Käufer</th><th>Status / Zahlung</th><th style="width:210px">Aktion</th></tr></thead>' +
+   '<tbody id="wm-vo-body"><tr><td colspan="5" style="color:#64748b">Noch nicht geladen.</td></tr></tbody></table></div>';
+  host.insertBefore(sec, host.firstChild);
+  el('wm-vo-load').addEventListener('click', load);
+  el('wm-vo-all').addEventListener('change', load);
+  el('wm-wd-body').addEventListener('click', function(ev){
+   var b = ev.target.closest('button[data-wa]'); if (!b) return;
+   var w = withdrawals[Number(b.getAttribute('data-w'))]; if (w) actWithdrawal(w, b.getAttribute('data-wa'));
+  });
+  el('wm-vo-body').addEventListener('click', function(ev){
+   var b = ev.target.closest('button[data-a]'); if (!b) return;
+   var o = orders[Number(b.getAttribute('data-i'))]; if (o) act(o, b.getAttribute('data-a'));
+  });
+  // beim Öffnen des Reiters „Gutscheine“ automatisch laden
+  Array.prototype.forEach.call(document.querySelectorAll('.tab'), function(t){
+   if (/^\s*Gutscheine\s*$/.test(t.textContent)) t.addEventListener('click', function(){ if (!loaded) load(); });
+  });
+  return true;
+ }
+ window.WMVoucherOrders = { load: load, mount: mount, _orders: function(){ return orders; }, _withdrawals: function(){ return withdrawals; } };
+ if (!mount()) document.addEventListener('DOMContentLoaded', mount);
+})();
+</script>
+
 </body>
 </html>
 
